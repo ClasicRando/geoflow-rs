@@ -615,6 +615,16 @@ dependencies = [
 name = "geoflow-rs"
 version = "0.1.0"
 dependencies = [
+ "async-once-cell",
+ "chrono",
+ "dotenvy",
+ "futures",
+ "once_cell",
+ "reqwest",
+ "rocket",
+ "serde",
+ "sqlx",
+ "tokio",
  "workflow_engine",
 ]
 
