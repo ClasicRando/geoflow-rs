@@ -1,6 +1,6 @@
 use calamine::{open_workbook_auto, DataType, Reader};
 use geo_types::Geometry;
-use geojson::{FeatureReader, JsonValue};
+use geojson::{FeatureReader};
 use itertools::Itertools;
 use polars::io::ipc::IpcReader;
 use polars::prelude::{AnyValue, DataFrame, ParquetReader, PolarsError, SerReader};
@@ -16,6 +16,7 @@ use std::path::PathBuf;
 use tokio::fs::File as TkFile;
 use wkt::ToWkt;
 
+#[derive(Debug)]
 pub enum LoaderError {
     Generic(String),
     Polars(PolarsError),
@@ -25,6 +26,23 @@ pub enum LoaderError {
     Excel(calamine::Error),
     Shp(shapefile::Error),
     GeoJSON(geojson::Error),
+}
+
+impl std::error::Error for LoaderError {}
+
+impl Display for LoaderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LoaderError::Generic(string) => write!(f, "Loader Error\n{}", string),
+            LoaderError::Polars(error) => write!(f, "Polars Error\n{}", error),
+            LoaderError::SQL(error) => write!(f, "Polars Error\n{}", error),
+            LoaderError::Fmt(error) => write!(f, "Format Error\n{}", error),
+            LoaderError::IO(error) => write!(f, "IO Error\n{}", error),
+            LoaderError::Excel(error) => write!(f, "Excel Error\n{}", error),
+            LoaderError::Shp(error) => write!(f, "Shapefile Error\n{}", error),
+            LoaderError::GeoJSON(error) => write!(f, "GeoJSON Error\n{}", error),
+        }
+    }
 }
 
 impl From<PolarsError> for LoaderError {
@@ -87,7 +105,14 @@ pub struct CopyOptions {
 }
 
 impl CopyOptions {
-    fn copy_statement(&self, delimiter: &u8, header: &bool, qualified: &bool) -> String {
+    pub fn new(table_name: &str, columns: &Vec<&str>) -> Self {
+        Self {
+            table_name: table_name.to_owned(),
+            columns: columns.iter().map(|s| s.to_string()).collect_vec(),
+        }
+    }
+
+    fn copy_statement(&self, delimiter: &char, header: &bool, qualified: &bool) -> String {
         format!(
             "COPY {} ({}) FROM STDIN WITH (FORMAT csv, DELIMITER '{}', HEADER {}, NULL ''{})",
             self.table_name.to_lowercase(),
@@ -150,7 +175,7 @@ async fn load_dataframe(
     pool: &PgPool,
     dataframe: DataFrame,
 ) -> BulkLoadResult {
-    let copy_statement = copy_options.copy_statement(&b',', &true, &true);
+    let copy_statement = copy_options.copy_statement(&',', &true, &true);
     let mut copy = pool.copy_in_raw(copy_statement.as_str()).await?;
 
     let mut iters = dataframe.iter().map(|s| s.iter()).collect::<Vec<_>>();
@@ -173,7 +198,7 @@ async fn load_delimited_data(
     copy_options: &CopyOptions,
     pool: &PgPool,
     file_path: &PathBuf,
-    delimiter: &u8,
+    delimiter: &char,
     qualified: &bool,
 ) -> BulkLoadResult {
     let copy_statement = copy_options.copy_statement(delimiter, &true, qualified);
@@ -209,7 +234,7 @@ async fn load_excel_data(
     file_path: &PathBuf,
     sheet_name: &String,
 ) -> BulkLoadResult {
-    let copy_statement = copy_options.copy_statement(&b',', &true, &true);
+    let copy_statement = copy_options.copy_statement(&',', &true, &true);
     let mut copy = pool.copy_in_raw(copy_statement.as_str()).await?;
     let mut workbook = open_workbook_auto(file_path.as_path())?;
     let sheet = match workbook.worksheet_range(&sheet_name) {
@@ -277,7 +302,7 @@ async fn load_shape_data(
     pool: &PgPool,
     file_path: &PathBuf,
 ) -> BulkLoadResult {
-    let copy_statement = copy_options.copy_statement(&b',', &true, &true);
+    let copy_statement = copy_options.copy_statement(&',', &true, &true);
     let mut copy = pool.copy_in_raw(copy_statement.as_str()).await?;
     let mut reader = shapefile::Reader::from_path(file_path.as_path())?;
     for feature in reader.iter_shapes_and_records() {
@@ -303,7 +328,7 @@ async fn load_geo_json_data(
     pool: &PgPool,
     file_path: &PathBuf,
 ) -> BulkLoadResult {
-    let copy_statement = copy_options.copy_statement(&b',', &true, &true);
+    let copy_statement = copy_options.copy_statement(&',', &true, &true);
     let mut copy = pool.copy_in_raw(copy_statement.as_str()).await?;
     let file = File::open(file_path.as_path())?;
     let buff_reader = BufReader::new(file);
@@ -346,10 +371,10 @@ async fn load_ipc_data(
     load_dataframe(copy_options, pool, df).await
 }
 
-enum BulkDataLoader {
+pub enum BulkDataLoader {
     DelimitedData {
         file_path: PathBuf,
-        delimiter: u8,
+        delimiter: char,
         qualified: bool,
     },
     Excel {
@@ -371,7 +396,7 @@ enum BulkDataLoader {
 }
 
 impl BulkDataLoader {
-    async fn load_data(&self, copy_options: CopyOptions, pool: PgPool) -> BulkLoadResult {
+    pub async fn load_data(&self, copy_options: CopyOptions, pool: PgPool) -> BulkLoadResult {
         match self {
             Self::DelimitedData {
                 file_path,
