@@ -9,7 +9,7 @@ use shapefile::Shape;
 use sqlx::pool::PoolConnection;
 use sqlx::postgres::PgCopyIn;
 use sqlx::{PgPool, Postgres};
-use std::fmt::{Display, Write};
+use std::fmt::Display;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
@@ -141,56 +141,44 @@ pub type BulkLoadResult = Result<u64, LoaderError>;
 pub type CopyResult = Result<(), LoaderError>;
 
 async fn copy_csv_row(copy: &mut CopyPipe, mut csv_data: String) -> Result<(), LoaderError> {
-    if csv_data.ends_with(',') {
-        csv_data.pop();
-    }
     csv_data.push('\n');
     copy.send(csv_data.as_bytes()).await?;
     Ok(())
 }
 
-fn escape_csv_string_into_buffer(buffer: &mut String, csv_string: &str) -> std::fmt::Result {
+fn escape_csv_string(csv_string: &str) -> String {
     if csv_string.contains('"')
         || csv_string.contains(',')
         || csv_string.contains('\n')
         || csv_string.contains('\r')
     {
-        write!(buffer, "\"{}\",", csv_string.replace("\"", "\"\""))
+        format!("\"{}\"", csv_string.replace("\"", "\"\""))
     } else {
-        write!(buffer, "{},", csv_string)
+        csv_string.to_owned()
     }
 }
 
-fn escape_option_csv_string_into_buffer(
-    buffer: &mut String,
-    option_csv_string: &Option<String>,
-) -> std::fmt::Result {
-    match option_csv_string {
-        None => write!(buffer, ","),
-        Some(str) => escape_csv_string_into_buffer(buffer, str),
-    }
-}
-
-fn append_formatted_value(buffer: &mut String, value: AnyValue) -> std::fmt::Result {
+fn map_formatted_value(value: AnyValue) -> String {
     match value {
-        AnyValue::Null => write!(buffer, ","),
-        AnyValue::Utf8(string) => escape_csv_string_into_buffer(buffer, string),
-        AnyValue::Utf8Owned(string) => escape_csv_string_into_buffer(buffer, &string),
-        _ => write!(buffer, "{},", value),
+        AnyValue::Null => String::new(),
+        AnyValue::Utf8(string) => escape_csv_string(string),
+        AnyValue::Utf8Owned(string) => escape_csv_string(&string),
+        _ => format!("{}", value),
     }
 }
 
 async fn load_dataframe(copy: &mut CopyPipe, dataframe: DataFrame) -> CopyResult {
     let mut iters = dataframe.iter().map(|s| s.iter()).collect::<Vec<_>>();
     for _ in 0..dataframe.height() {
-        let mut csv_row = String::new();
-        for iter in &mut iters {
-            let value = iter
-                .next()
-                .ok_or("Dataframe value was not found. This should never happen".to_string())?;
-            append_formatted_value(&mut csv_row, value)?;
-        }
-        copy_csv_row(copy, csv_row).await?;
+        let row_data = iters
+            .iter_mut()
+            .map(|iter| {
+                iter.next()
+                    .ok_or("Dataframe value was not found. This should never happen".to_string())
+                    .map(|value| map_formatted_value(value))
+            })
+            .collect::<Result<Vec<String>, _>>()?;
+        copy_csv_row(copy, row_data.join(",")).await?;
     }
     Ok(())
 }
@@ -201,12 +189,11 @@ async fn load_delimited_data(copy: &mut CopyPipe, file_path: &Path) -> CopyResul
     Ok(())
 }
 
-fn append_excel_value(buffer: &mut String, value: &DataType) -> Result<(), LoaderError> {
-    match value {
-        DataType::String(s) => escape_csv_string_into_buffer(
-            buffer,
-            &s.replace("_x000d_", "\n").replace("_x000a_", "\r"),
-        )?,
+fn map_excel_value(value: &DataType) -> Result<String, LoaderError> {
+    Ok(match value {
+        DataType::String(s) => {
+            escape_csv_string(&s.replace("_x000d_", "\n").replace("_x000a_", "\r"))
+        }
         DataType::DateTime(_) => {
             let formatted_datetime = value
                 .as_datetime()
@@ -215,13 +202,12 @@ fn append_excel_value(buffer: &mut String, value: &DataType) -> Result<(), Loade
                     value
                 ))?
                 .format("%Y-%m-%d %H:%M:%S");
-            write!(buffer, "{},", formatted_datetime)?;
+            format!("{}", formatted_datetime)
         }
         DataType::Error(e) => return Err(LoaderError::Generic(format!("Cell error, {}", e))),
-        DataType::Empty => write!(buffer, ",")?,
-        _ => write!(buffer, "{},", value)?,
-    }
-    Ok(())
+        DataType::Empty => String::new(),
+        _ => format!("{}", value),
+    })
 }
 
 async fn load_excel_data(copy: &mut CopyPipe, file_path: &Path, sheet_name: &String) -> CopyResult {
@@ -246,54 +232,40 @@ async fn load_excel_data(copy: &mut CopyPipe, file_path: &Path, sheet_name: &Str
         }
     };
     let header_size = header.len();
-    let mut row_num = 0;
-    for row in rows {
-        row_num += 1;
-        let mut value_count = 0;
-        let mut csv_row = String::new();
-        for col in row {
-            append_excel_value(&mut csv_row, col)?;
-            value_count += 1;
-        }
-        if value_count != header_size {
+    for (row_num, row) in rows.enumerate() {
+        let row_data = row
+            .iter()
+            .map(|value| map_excel_value(value))
+            .collect::<Result<Vec<String>, _>>()?;
+        if row_data.len() != header_size {
             return Err(LoaderError::Generic(format!(
                 "Excel row {} has {} values but expected {}",
-                row_num, value_count, header_size
+                row_num + 1,
+                row_data.len(),
+                header_size
             )));
         }
-        copy_csv_row(copy, csv_row).await?;
+        copy_csv_row(copy, row_data.join(",")).await?;
     }
     Ok(())
 }
 
-fn append_option_to_buffer<T: Display>(
-    buffer: &mut String,
-    option_value: &Option<T>,
-) -> std::fmt::Result {
-    match option_value {
-        None => write!(buffer, ","),
-        Some(v) => write!(buffer, "{},", v),
-    }
-}
-
-fn append_field_value(buffer: &mut String, value: &FieldValue) -> std::fmt::Result {
+fn map_field_value(value: FieldValue) -> String {
     match value {
-        FieldValue::Character(str) => escape_option_csv_string_into_buffer(buffer, str),
-        FieldValue::Numeric(n) => append_option_to_buffer(buffer, n),
-        FieldValue::Logical(l) => append_option_to_buffer(buffer, l),
-        FieldValue::Date(date) => match date {
-            Some(d) => write!(buffer, "{}-{}-{},", d.year(), d.month(), d.day()),
-            None => write!(buffer, ","),
-        },
-        FieldValue::Float(f) => append_option_to_buffer(buffer, f),
-        FieldValue::Integer(i) => write!(buffer, "{},", i),
-        FieldValue::Currency(c) => write!(buffer, "{},", c),
+        FieldValue::Character(str) => str.map(|s| escape_csv_string(&s)).unwrap_or_default(),
+        FieldValue::Numeric(n) => n.map(|f| f.to_string()).unwrap_or_default(),
+        FieldValue::Logical(l) => l.map(|b| b.to_string()).unwrap_or_default(),
+        FieldValue::Date(date) => date
+            .map(|d| format!("{}-{}-{}", d.year(), d.month(), d.day()))
+            .unwrap_or_default(),
+        FieldValue::Float(f) => f.map(|f| f.to_string()).unwrap_or("".into()),
+        FieldValue::Integer(i) => i.to_string(),
+        FieldValue::Currency(c) => c.to_string(),
         FieldValue::DateTime(dt) => {
             let date = dt.date();
             let time = dt.time();
-            write!(
-                buffer,
-                "{}-{}-{} {}:{}:{},",
+            format!(
+                "{}-{}-{} {}:{}:{}",
                 date.year(),
                 date.month(),
                 date.day(),
@@ -302,8 +274,8 @@ fn append_field_value(buffer: &mut String, value: &FieldValue) -> std::fmt::Resu
                 time.seconds()
             )
         }
-        FieldValue::Double(d) => write!(buffer, "{},", d),
-        FieldValue::Memo(m) => escape_csv_string_into_buffer(buffer, &m),
+        FieldValue::Double(d) => d.to_string(),
+        FieldValue::Memo(m) => m.to_owned(),
     }
 }
 
@@ -311,17 +283,18 @@ async fn load_shape_data(copy: &mut CopyPipe, file_path: &Path) -> CopyResult {
     let mut reader = shapefile::Reader::from_path(file_path)?;
     for feature in reader.iter_shapes_and_records() {
         let (shape, record) = feature?;
-        let mut csv_row = String::new();
-        for (_, value) in record {
-            append_field_value(&mut csv_row, &value)?
-        }
-        match shape {
-            Shape::NullShape => write!(&mut csv_row, ",")?,
+        let wkt = match shape {
+            Shape::NullShape => String::new(),
             _ => {
                 let geo = geo_types::Geometry::<f64>::try_from(shape)?;
-                write!(&mut csv_row, "{},", geo.wkt_string())?;
+                format!("{}", geo.wkt_string())
             }
-        }
+        };
+        let csv_row = record
+            .into_iter()
+            .map(|(_, value)| map_field_value(value))
+            .chain(std::iter::once(wkt))
+            .join(",");
         copy_csv_row(copy, csv_row).await?;
     }
     Ok(())
