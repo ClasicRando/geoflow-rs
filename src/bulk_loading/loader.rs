@@ -140,13 +140,21 @@ pub type CopyPipe = PgCopyIn<PoolConnection<Postgres>>;
 pub type BulkLoadResult = Result<u64, LoaderError>;
 pub type CopyResult = Result<(), LoaderError>;
 
-async fn copy_csv_row(copy: &mut CopyPipe, mut csv_data: String) -> Result<(), LoaderError> {
+async fn copy_csv_iter<I: Iterator<Item = String>>(copy: &mut CopyPipe, csv_iter: I) -> Result<(), LoaderError> {
+    let mut csv_data = csv_iter.map(|s| escape_csv_string(s)).join(",");
     csv_data.push('\n');
     copy.send(csv_data.as_bytes()).await?;
     Ok(())
 }
 
-fn escape_csv_string(csv_string: &str) -> String {
+async fn copy_csv_values<I: IntoIterator<Item = String>>(copy: &mut CopyPipe, csv_values: I) -> Result<(), LoaderError> {
+    let mut csv_data = csv_values.into_iter().map(|s| escape_csv_string(s)).join(",");
+    csv_data.push('\n');
+    copy.send(csv_data.as_bytes()).await?;
+    Ok(())
+}
+
+fn escape_csv_string(csv_string: String) -> String {
     if csv_string.contains('"')
         || csv_string.contains(',')
         || csv_string.contains('\n')
@@ -154,15 +162,15 @@ fn escape_csv_string(csv_string: &str) -> String {
     {
         format!("\"{}\"", csv_string.replace("\"", "\"\""))
     } else {
-        csv_string.to_owned()
+        csv_string
     }
 }
 
 fn map_formatted_value(value: AnyValue) -> String {
     match value {
         AnyValue::Null => String::new(),
-        AnyValue::Utf8(string) => escape_csv_string(string),
-        AnyValue::Utf8Owned(string) => escape_csv_string(&string),
+        AnyValue::Utf8(string) => string.to_owned(),
+        AnyValue::Utf8Owned(string) => string,
         _ => format!("{}", value),
     }
 }
@@ -178,7 +186,7 @@ async fn load_dataframe(copy: &mut CopyPipe, dataframe: DataFrame) -> CopyResult
                     .map(|value| map_formatted_value(value))
             })
             .collect::<Result<Vec<String>, _>>()?;
-        copy_csv_row(copy, row_data.join(",")).await?;
+            copy_csv_values(copy, row_data).await?;
     }
     Ok(())
 }
@@ -191,9 +199,7 @@ async fn load_delimited_data(copy: &mut CopyPipe, file_path: &Path) -> CopyResul
 
 fn map_excel_value(value: &DataType) -> Result<String, LoaderError> {
     Ok(match value {
-        DataType::String(s) => {
-            escape_csv_string(&s.replace("_x000d_", "\n").replace("_x000a_", "\r"))
-        }
+        DataType::String(s) => s.replace("_x000d_", "\n").replace("_x000a_", "\r"),
         DataType::DateTime(_) => {
             let formatted_datetime = value
                 .as_datetime()
@@ -245,14 +251,14 @@ async fn load_excel_data(copy: &mut CopyPipe, file_path: &Path, sheet_name: &Str
                 header_size
             )));
         }
-        copy_csv_row(copy, row_data.join(",")).await?;
+        copy_csv_values(copy, row_data).await?;
     }
     Ok(())
 }
 
 fn map_field_value(value: FieldValue) -> String {
     match value {
-        FieldValue::Character(str) => str.map(|s| escape_csv_string(&s)).unwrap_or_default(),
+        FieldValue::Character(str) => str.unwrap_or_default(),
         FieldValue::Numeric(n) => n.map(|f| f.to_string()).unwrap_or_default(),
         FieldValue::Logical(l) => l.map(|b| b.to_string()).unwrap_or_default(),
         FieldValue::Date(date) => date
@@ -275,7 +281,7 @@ fn map_field_value(value: FieldValue) -> String {
             )
         }
         FieldValue::Double(d) => d.to_string(),
-        FieldValue::Memo(m) => m.to_owned(),
+        FieldValue::Memo(m) => m,
     }
 }
 
@@ -293,9 +299,8 @@ async fn load_shape_data(copy: &mut CopyPipe, file_path: &Path) -> CopyResult {
         let csv_row = record
             .into_iter()
             .map(|(_, value)| map_field_value(value))
-            .chain(std::iter::once(wkt))
-            .join(",");
-        copy_csv_row(copy, csv_row).await?;
+            .chain(std::iter::once(wkt));
+        copy_csv_iter(copy, csv_row).await?;
     }
     Ok(())
 }
@@ -314,10 +319,9 @@ async fn load_geo_json_data(copy: &mut CopyPipe, file_path: &Path) -> CopyResult
             .unwrap_or_default();
         let csv_row = feature
             .properties_iter()
-            .map(|(_, value)| value as &dyn Display)
-            .chain(std::iter::once(&geom as &dyn Display))
-            .join(",");
-        copy_csv_row(copy, csv_row).await?;
+            .map(|(_, value)| format!("{}", value))
+            .chain(std::iter::once(geom));
+        copy_csv_iter(copy, csv_row).await?;
     }
     Ok(())
 }
