@@ -3,103 +3,22 @@ use geo_types::Geometry;
 use geojson::FeatureReader;
 use itertools::Itertools;
 use polars::io::ipc::IpcReader;
-use polars::prelude::{AnyValue, DataFrame, ParquetReader, PolarsError, SerReader};
+use polars::prelude::{AnyValue, DataFrame, ParquetReader, SerReader};
 use shapefile::dbase::FieldValue;
 use shapefile::Shape;
 use sqlx::pool::PoolConnection;
 use sqlx::postgres::PgCopyIn;
 use sqlx::{PgPool, Postgres};
-use std::fmt::Display;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
 use tokio::fs::File as TkFile;
 use wkt::ToWkt;
 
-use super::options::{DataFileOptions, DefaultFileOptions, DelimitedDataOptions, ExcelOptions};
-
-#[derive(Debug)]
-pub enum LoaderError {
-    Generic(String),
-    Polars(PolarsError),
-    SQL(sqlx::Error),
-    Fmt(std::fmt::Error),
-    IO(std::io::Error),
-    Excel(calamine::Error),
-    Shp(shapefile::Error),
-    GeoJSON(geojson::Error),
-}
-
-impl std::error::Error for LoaderError {}
-
-impl Display for LoaderError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LoaderError::Generic(string) => write!(f, "Loader Error\n{}", string),
-            LoaderError::Polars(error) => write!(f, "Polars Error\n{}", error),
-            LoaderError::SQL(error) => write!(f, "Polars Error\n{}", error),
-            LoaderError::Fmt(error) => write!(f, "Format Error\n{}", error),
-            LoaderError::IO(error) => write!(f, "IO Error\n{}", error),
-            LoaderError::Excel(error) => write!(f, "Excel Error\n{}", error),
-            LoaderError::Shp(error) => write!(f, "Shapefile Error\n{}", error),
-            LoaderError::GeoJSON(error) => write!(f, "GeoJSON Error\n{}", error),
-        }
-    }
-}
-
-impl From<PolarsError> for LoaderError {
-    fn from(error: PolarsError) -> Self {
-        Self::Polars(error)
-    }
-}
-
-impl From<sqlx::Error> for LoaderError {
-    fn from(error: sqlx::Error) -> Self {
-        Self::SQL(error)
-    }
-}
-
-impl From<std::fmt::Error> for LoaderError {
-    fn from(error: std::fmt::Error) -> Self {
-        Self::Fmt(error)
-    }
-}
-
-impl From<std::io::Error> for LoaderError {
-    fn from(error: std::io::Error) -> Self {
-        Self::IO(error)
-    }
-}
-
-impl From<calamine::Error> for LoaderError {
-    fn from(error: calamine::Error) -> Self {
-        Self::Excel(error)
-    }
-}
-
-impl From<&str> for LoaderError {
-    fn from(error: &str) -> Self {
-        Self::Generic(error.to_owned())
-    }
-}
-
-impl From<String> for LoaderError {
-    fn from(error: String) -> Self {
-        Self::Generic(error)
-    }
-}
-
-impl From<shapefile::Error> for LoaderError {
-    fn from(error: shapefile::Error) -> Self {
-        Self::Shp(error)
-    }
-}
-
-impl From<geojson::Error> for LoaderError {
-    fn from(error: geojson::Error) -> Self {
-        Self::GeoJSON(error)
-    }
-}
+use super::{
+    error::BulkDataError,
+    options::{DataFileOptions, DefaultFileOptions, DelimitedDataOptions, ExcelOptions},
+};
 
 pub struct CopyOptions {
     table_name: String,
@@ -131,13 +50,10 @@ impl CopyOptions {
 }
 
 pub type CopyPipe = PgCopyIn<PoolConnection<Postgres>>;
-pub type BulkLoadResult = Result<u64, LoaderError>;
-pub type CopyResult = Result<(), LoaderError>;
+pub type BulkLoadResult = Result<u64, BulkDataError>;
+pub type CopyResult = Result<(), BulkDataError>;
 
-async fn copy_csv_iter<I: Iterator<Item = String>>(
-    copy: &mut CopyPipe,
-    csv_iter: I,
-) -> Result<(), LoaderError> {
+async fn copy_csv_iter<I: Iterator<Item = String>>(copy: &mut CopyPipe, csv_iter: I) -> CopyResult {
     let mut csv_data = csv_iter.map(|s| escape_csv_string(s)).join(",");
     csv_data.push('\n');
     copy.send(csv_data.as_bytes()).await?;
@@ -147,7 +63,7 @@ async fn copy_csv_iter<I: Iterator<Item = String>>(
 async fn copy_csv_values<I: IntoIterator<Item = String>>(
     copy: &mut CopyPipe,
     csv_values: I,
-) -> Result<(), LoaderError> {
+) -> CopyResult {
     let mut csv_data = csv_values
         .into_iter()
         .map(|s| escape_csv_string(s))
@@ -200,7 +116,7 @@ async fn load_delimited_data(copy: &mut CopyPipe, file_path: &Path) -> CopyResul
     Ok(())
 }
 
-fn map_excel_value(value: &DataType) -> Result<String, LoaderError> {
+fn map_excel_value(value: &DataType) -> Result<String, BulkDataError> {
     Ok(match value {
         DataType::String(s) => s.replace("_x000d_", "\n").replace("_x000a_", "\r"),
         DataType::DateTime(_) => {
@@ -213,7 +129,7 @@ fn map_excel_value(value: &DataType) -> Result<String, LoaderError> {
                 .format("%Y-%m-%d %H:%M:%S");
             format!("{}", formatted_datetime)
         }
-        DataType::Error(e) => return Err(LoaderError::Generic(format!("Cell error, {}", e))),
+        DataType::Error(e) => return Err(BulkDataError::Generic(format!("Cell error, {}", e))),
         DataType::Empty => String::new(),
         _ => format!("{}", value),
     })
@@ -225,7 +141,7 @@ async fn load_excel_data(copy: &mut CopyPipe, options: &ExcelOptions<'_>) -> Cop
     let sheet = match workbook.worksheet_range(sheet_name) {
         Some(Ok(sheet)) => sheet,
         _ => {
-            return Err(LoaderError::Generic(format!(
+            return Err(BulkDataError::Generic(format!(
                 "Could not find sheet \"{}\" in {:?}",
                 sheet_name, file_path
             )))
@@ -235,7 +151,7 @@ async fn load_excel_data(copy: &mut CopyPipe, options: &ExcelOptions<'_>) -> Cop
     let header = match rows.next() {
         Some(row) => row,
         None => {
-            return Err(LoaderError::Generic(format!(
+            return Err(BulkDataError::Generic(format!(
                 "Could not find a header row for excel file {:?}",
                 file_path
             )))
@@ -248,7 +164,7 @@ async fn load_excel_data(copy: &mut CopyPipe, options: &ExcelOptions<'_>) -> Cop
             .map(|value| map_excel_value(value))
             .collect::<Result<Vec<String>, _>>()?;
         if row_data.len() != header_size {
-            return Err(LoaderError::Generic(format!(
+            return Err(BulkDataError::Generic(format!(
                 "Excel row {} has {} values but expected {}",
                 row_num + 1,
                 row_data.len(),
