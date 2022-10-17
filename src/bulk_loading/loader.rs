@@ -366,9 +366,7 @@ impl<'p> BulkDataLoader<'p> {
             Self::DelimitedData { options } => {
                 load_delimited_data(&mut copy, options.file_path()).await
             }
-            Self::Excel { options } => {
-                load_excel_data(&mut copy, options).await
-            }
+            Self::Excel { options } => load_excel_data(&mut copy, options).await,
             Self::Shape { options } => load_shape_data(&mut copy, options.file_path()).await,
             Self::GeoJSON { options } => load_geo_json_data(&mut copy, options.file_path()).await,
             Self::Parquet { options } => load_parquet_data(&mut copy, options.file_path()).await,
