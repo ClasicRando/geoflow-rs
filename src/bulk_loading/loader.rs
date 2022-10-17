@@ -16,6 +16,8 @@ use std::path::Path;
 use tokio::fs::File as TkFile;
 use wkt::ToWkt;
 
+use super::options::{DataFileOptions, DefaultFileOptions, DelimitedDataOptions, ExcelOptions};
+
 #[derive(Debug)]
 pub enum LoaderError {
     Generic(String),
@@ -112,26 +114,18 @@ impl CopyOptions {
         }
     }
 
-    fn copy_statement(&self, delimiter: &char, header: &bool, qualified: &bool) -> String {
+    fn copy_statement<O: DataFileOptions>(&self, options: &O) -> String {
         format!(
             "COPY {} ({}) FROM STDIN WITH (FORMAT csv, DELIMITER '{}', HEADER {}, NULL ''{})",
             self.table_name.to_lowercase(),
             self.columns.join(","),
-            delimiter,
-            if *header { "true" } else { "false" },
-            if *qualified {
+            options.delimiter(),
+            if *options.header() { "true" } else { "false" },
+            if *options.qualified() {
                 ", QUOTE '\"', ESCAPE '\"'"
             } else {
                 ""
             }
-        )
-    }
-
-    fn csv_copy_statement(&self) -> String {
-        format!(
-            "COPY {} ({}) FROM STDIN WITH (FORMAT csv, DELIMITER ',', HEADER false, NULL '', QUOTE '\"', ESCAPE '\"')",
-            self.table_name.to_lowercase(),
-            self.columns.join(","),
         )
     }
 }
@@ -140,15 +134,24 @@ pub type CopyPipe = PgCopyIn<PoolConnection<Postgres>>;
 pub type BulkLoadResult = Result<u64, LoaderError>;
 pub type CopyResult = Result<(), LoaderError>;
 
-async fn copy_csv_iter<I: Iterator<Item = String>>(copy: &mut CopyPipe, csv_iter: I) -> Result<(), LoaderError> {
+async fn copy_csv_iter<I: Iterator<Item = String>>(
+    copy: &mut CopyPipe,
+    csv_iter: I,
+) -> Result<(), LoaderError> {
     let mut csv_data = csv_iter.map(|s| escape_csv_string(s)).join(",");
     csv_data.push('\n');
     copy.send(csv_data.as_bytes()).await?;
     Ok(())
 }
 
-async fn copy_csv_values<I: IntoIterator<Item = String>>(copy: &mut CopyPipe, csv_values: I) -> Result<(), LoaderError> {
-    let mut csv_data = csv_values.into_iter().map(|s| escape_csv_string(s)).join(",");
+async fn copy_csv_values<I: IntoIterator<Item = String>>(
+    copy: &mut CopyPipe,
+    csv_values: I,
+) -> Result<(), LoaderError> {
+    let mut csv_data = csv_values
+        .into_iter()
+        .map(|s| escape_csv_string(s))
+        .join(",");
     csv_data.push('\n');
     copy.send(csv_data.as_bytes()).await?;
     Ok(())
@@ -186,7 +189,7 @@ async fn load_dataframe(copy: &mut CopyPipe, dataframe: DataFrame) -> CopyResult
                     .map(|value| map_formatted_value(value))
             })
             .collect::<Result<Vec<String>, _>>()?;
-            copy_csv_values(copy, row_data).await?;
+        copy_csv_values(copy, row_data).await?;
     }
     Ok(())
 }
@@ -216,9 +219,10 @@ fn map_excel_value(value: &DataType) -> Result<String, LoaderError> {
     })
 }
 
-async fn load_excel_data(copy: &mut CopyPipe, file_path: &Path, sheet_name: &String) -> CopyResult {
+async fn load_excel_data(copy: &mut CopyPipe, options: &ExcelOptions<'_>) -> CopyResult {
+    let (file_path, sheet_name) = (options.file_path(), options.sheet_name());
     let mut workbook = open_workbook_auto(file_path)?;
-    let sheet = match workbook.worksheet_range(&sheet_name) {
+    let sheet = match workbook.worksheet_range(sheet_name) {
         Some(Ok(sheet)) => sheet,
         _ => {
             return Err(LoaderError::Generic(format!(
@@ -339,54 +343,36 @@ async fn load_ipc_data(copy: &mut CopyPipe, file_path: &Path) -> CopyResult {
 }
 
 pub enum BulkDataLoader<'p> {
-    DelimitedData {
-        file_path: &'p Path,
-        delimiter: char,
-        qualified: bool,
-    },
-    Excel {
-        file_path: &'p Path,
-        sheet_name: String,
-    },
-    Shape {
-        file_path: &'p Path,
-    },
-    GeoJSON {
-        file_path: &'p Path,
-    },
-    Parquet {
-        file_path: &'p Path,
-    },
-    Ipc {
-        file_path: &'p Path,
-    },
+    DelimitedData { options: DelimitedDataOptions<'p> },
+    Excel { options: ExcelOptions<'p> },
+    Shape { options: DefaultFileOptions<'p> },
+    GeoJSON { options: DefaultFileOptions<'p> },
+    Parquet { options: DefaultFileOptions<'p> },
+    Ipc { options: DefaultFileOptions<'p> },
 }
 
 impl<'p> BulkDataLoader<'p> {
     pub async fn load_data(&self, copy_options: CopyOptions, pool: PgPool) -> BulkLoadResult {
-        let copy_statement = if let Self::DelimitedData {
-            delimiter,
-            qualified,
-            ..
-        } = self
-        {
-            copy_options.copy_statement(delimiter, &true, qualified)
-        } else {
-            copy_options.csv_copy_statement()
+        let copy_statement = match self {
+            BulkDataLoader::DelimitedData { options } => copy_options.copy_statement(options),
+            BulkDataLoader::Excel { options } => copy_options.copy_statement(options),
+            BulkDataLoader::Shape { options } => copy_options.copy_statement(options),
+            BulkDataLoader::GeoJSON { options } => copy_options.copy_statement(options),
+            BulkDataLoader::Parquet { options } => copy_options.copy_statement(options),
+            BulkDataLoader::Ipc { options } => copy_options.copy_statement(options),
         };
         let mut copy = pool.copy_in_raw(copy_statement.as_str()).await?;
         let result = match self {
-            Self::DelimitedData { file_path, .. } => {
-                load_delimited_data(&mut copy, file_path).await
+            Self::DelimitedData { options } => {
+                load_delimited_data(&mut copy, options.file_path()).await
             }
-            Self::Excel {
-                file_path,
-                sheet_name,
-            } => load_excel_data(&mut copy, file_path, sheet_name).await,
-            Self::Shape { file_path } => load_shape_data(&mut copy, file_path).await,
-            Self::GeoJSON { file_path } => load_geo_json_data(&mut copy, file_path).await,
-            Self::Parquet { file_path } => load_parquet_data(&mut copy, file_path).await,
-            Self::Ipc { file_path } => load_ipc_data(&mut copy, file_path).await,
+            Self::Excel { options } => {
+                load_excel_data(&mut copy, options).await
+            }
+            Self::Shape { options } => load_shape_data(&mut copy, options.file_path()).await,
+            Self::GeoJSON { options } => load_geo_json_data(&mut copy, options.file_path()).await,
+            Self::Parquet { options } => load_parquet_data(&mut copy, options.file_path()).await,
+            Self::Ipc { options } => load_ipc_data(&mut copy, options.file_path()).await,
         };
         match result {
             Ok(_) => Ok(copy.finish().await?),
