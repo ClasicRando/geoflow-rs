@@ -17,7 +17,7 @@ rocket = { version = "0.5.0-rc.2", features = ["serde_json", "json"] }
 dotenv = "0.15.0"
 chrono = { version = "0.4.22", features = ["serde"] }
 reqwest = { version = "0.11.11", features = ["json"] }
-polars = { version = "0.24.0", features = ["serde", "parquet", "ipc", "dtype-full"] }
+polars = { version = "0.24.0", features = ["serde", "parquet", "ipc", "dtype-full", "timezones"] }
 async-std = "1.12.0"
 itertools = "0.10.5"
 tempfile = "3.3.0"
@@ -26,3 +26,5 @@ shapefile = { version = "0.3.0", features = ["geo-types"] }
 geo-types = "0.7.7"
 wkt = { version = "0.10.3", features = ["geo-types"] }
 geojson = { version = "0.24.0", features = ["geo-types"] }
+csv = "1.1.6"
+phf = { version = "0.11.1", features = ["macros"] }
