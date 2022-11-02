@@ -1,3 +1,10 @@
 pub mod loader;
 pub mod options;
 pub mod error;
+pub mod delimited;
+pub mod excel;
+pub mod utilities;
+pub mod shape;
+pub mod geo_json;
+pub mod ipc;
+pub mod parquet;

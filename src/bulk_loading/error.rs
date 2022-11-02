@@ -1,6 +1,8 @@
 use polars::prelude::PolarsError;
 use std::fmt::Display;
 
+pub type BulkDataResult<T> = Result<T, BulkDataError>;
+
 #[derive(Debug)]
 pub enum BulkDataError {
     Generic(String),
