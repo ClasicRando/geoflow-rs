@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub trait DataFileOptions {
     fn delimiter(&self) -> &char {
