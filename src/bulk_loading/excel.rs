@@ -14,13 +14,6 @@ pub struct ExcelOptions {
 
 impl DataFileOptions for ExcelOptions {}
 
-impl ExcelOptions {
-    #[inline]
-    pub fn sheet_name(&self) -> &str {
-        &self.sheet_name
-    }
-}
-
 pub fn map_excel_value(value: &DataType) -> BulkDataResult<String> {
     Ok(match value {
         DataType::String(s) => s.replace("_x000d_", "\n").replace("_x000a_", "\r"),
