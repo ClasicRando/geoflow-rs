@@ -12,6 +12,15 @@ pub struct ExcelOptions {
     sheet_name: String,
 }
 
+impl ExcelOptions {
+    pub fn new(file_path: PathBuf, sheet_name: String) -> Self {
+        Self {
+            file_path,
+            sheet_name,
+        }
+    }
+}
+
 impl DataFileOptions for ExcelOptions {}
 
 pub fn map_excel_value(value: &DataType) -> BulkDataResult<String> {

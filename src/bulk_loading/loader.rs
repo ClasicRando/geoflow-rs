@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use super::{
     delimited::{load_delimited_data, DelimitedDataOptions},
     error::BulkDataError,
@@ -80,6 +82,42 @@ pub enum BulkDataLoader {
 }
 
 impl BulkDataLoader {
+    pub fn from_delimited_data(file_path: PathBuf, delimiter: char, qualified: bool) -> Self {
+        Self::DelimitedData {
+            options: DelimitedDataOptions::new(file_path, delimiter, qualified),
+        }
+    }
+
+    pub fn from_excel_data(file_path: PathBuf, sheet_name: String) -> Self {
+        Self::Excel {
+            options: ExcelOptions::new(file_path, sheet_name),
+        }
+    }
+    
+    pub fn from_shape_data(file_path: PathBuf) -> Self {
+        Self::Shape {
+            options: DefaultFileOptions::new(file_path),
+        }
+    }
+    
+    pub fn from_geo_json_Data(file_path: PathBuf) -> Self {
+        Self::GeoJSON {
+            options: DefaultFileOptions::new(file_path),
+        }
+    }
+    
+    pub fn from_parquet_data(file_path: PathBuf) -> Self {
+        Self::Parquet {
+            options: DefaultFileOptions::new(file_path),
+        }
+    }
+    
+    pub fn from_ipc_data(file_path: PathBuf) -> Self {
+        Self::Ipc {
+            options: DefaultFileOptions::new(file_path),
+        }
+    }
+
     pub async fn load_data(&self, copy_options: CopyOptions, pool: PgPool) -> BulkLoadResult {
         let copy_statement = match self {
             BulkDataLoader::DelimitedData { options } => copy_options.copy_statement(options),

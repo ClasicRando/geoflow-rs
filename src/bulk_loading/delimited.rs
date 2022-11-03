@@ -11,6 +11,16 @@ pub struct DelimitedDataOptions {
     qualified: bool,
 }
 
+impl DelimitedDataOptions {
+    pub fn new(file_path: PathBuf, delimiter: char, qualified: bool) -> Self {
+        Self {
+            file_path,
+            delimiter,
+            qualified,
+        }
+    }
+}
+
 impl DataFileOptions for DelimitedDataOptions {
     #[inline]
     fn delimiter(&self) -> &char {
