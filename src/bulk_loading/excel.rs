@@ -1,5 +1,5 @@
 use calamine::{open_workbook_auto, DataType, Reader};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use super::{
     error::{BulkDataError, BulkDataResult},
@@ -81,4 +81,113 @@ pub async fn load_excel_data(copy: &mut CopyPipe, options: &ExcelOptions) -> Cop
         copy_csv_values(copy, row_data).await?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use calamine::DataType;
+
+    use super::*;
+
+    #[test]
+    fn map_excel_value_should_return_integer_string_when_int() -> BulkDataResult<()> {
+        let value = DataType::Int(25_i64);
+
+        let actual = map_excel_value(&value)?;
+
+        assert_eq!("25", actual);
+        Ok(())
+    }
+
+    #[test]
+    fn map_excel_value_should_return_numeric_string_when_float() -> BulkDataResult<()> {
+        let value = DataType::Float(0.025698);
+
+        let actual = map_excel_value(&value)?;
+
+        assert_eq!("0.025698", actual);
+        Ok(())
+    }
+
+    #[test]
+    fn map_excel_value_should_return_same_string_when_string() -> BulkDataResult<()> {
+        let expected = String::from("This is a test");
+        let value = DataType::String(expected.to_owned());
+
+        let actual = map_excel_value(&value)?;
+
+        assert_eq!(expected, actual);
+        Ok(())
+    }
+
+    #[test]
+    fn map_excel_value_should_return_string_with_newline_fixed_when_string_with_newline() -> BulkDataResult<()> {
+        let expected = String::from("This is a test\nSecond line");
+        let string = String::from("This is a test_x000d_Second line");
+        let value = DataType::String(string);
+
+        let actual = map_excel_value(&value)?;
+
+        assert_eq!(expected, actual);
+        Ok(())
+    }
+
+    #[test]
+    fn map_excel_value_should_return_string_with_carriage_return_fixed_when_string_with_carriage_return() -> BulkDataResult<()> {
+        let expected = String::from("This is a test\rSecond line");
+        let string = String::from("This is a test_x000a_Second line");
+        let value = DataType::String(string);
+
+        let actual = map_excel_value(&value)?;
+
+        assert_eq!(expected, actual);
+        Ok(())
+    }
+
+    #[test]
+    fn map_excel_value_should_return_true_string_when_bool_true() -> BulkDataResult<()> {
+        let value = DataType::Bool(true);
+
+        let actual = map_excel_value(&value)?;
+
+        assert_eq!("true", actual);
+        Ok(())
+    }
+
+    #[test]
+    fn map_excel_value_should_return_false_string_when_bool_false() -> BulkDataResult<()> {
+        let value = DataType::Bool(false);
+
+        let actual = map_excel_value(&value)?;
+
+        assert_eq!("false", actual);
+        Ok(())
+    }
+
+    #[test]
+    fn map_excel_value_should_return_date_string_when_date() -> BulkDataResult<()> {
+        let days_from_epoch = 19287.;
+        let seconds_from_epoch = 0.83985;
+        let value = DataType::DateTime(25569. + days_from_epoch + seconds_from_epoch);
+
+        let actual = map_excel_value(&value)?;
+
+        assert_eq!("2022-10-22 20:09:23", actual);
+        Ok(())
+    }
+
+    #[test]
+    fn map_excel_value_should_return_generic_error_when_error() {
+        let value = DataType::Error(calamine::CellErrorType::Div0);
+
+        let actual = match map_excel_value(&value) {
+            Ok(_) => panic!("Test of map_excel_value should have returned an Err variant"),
+            Err(error) => match error {
+                BulkDataError::Generic(s) => s,
+                _ => panic!("Test of map_excel_value should have returned a Generic BulkDataError Variant"),
+            }
+        };
+
+        assert_eq!("Cell error, #DIV/0!", actual);
+    }
 }
