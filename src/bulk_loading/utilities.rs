@@ -1,6 +1,6 @@
 use polars::prelude::{AnyValue, TimeUnit, DataFrame};
 
-use super::{error::BulkDataError, loader::{CopyPipe, CopyResult, copy_csv_values}};
+use super::loader::{CopyPipe, CopyResult, copy_csv_values};
 
 pub fn escape_csv_string(csv_string: String) -> String {
     if csv_string

@@ -1,4 +1,4 @@
-use std::{fs::File, path::Path};
+use std::fs::File;
 
 use polars::prelude::{ParquetReader, SerReader};
 
