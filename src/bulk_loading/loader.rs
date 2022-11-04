@@ -100,7 +100,7 @@ impl BulkDataLoader {
         }
     }
     
-    pub fn from_geo_json_Data(file_path: PathBuf) -> Self {
+    pub fn from_geo_json_data(file_path: PathBuf) -> Self {
         Self::GeoJSON {
             options: DefaultFileOptions::new(file_path),
         }
