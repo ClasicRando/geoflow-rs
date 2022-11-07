@@ -1,6 +1,11 @@
-use polars::prelude::{AnyValue, TimeUnit, DataFrame};
+use polars::prelude::{AnyValue, DataFrame, TimeUnit};
+use tokio::sync::mpsc::{error::SendError, Sender};
 
-use super::loader::{CopyPipe, CopyResult, copy_csv_values};
+use super::{
+    error::BulkDataResult,
+    loader::{copy_csv_values, CopyPipe, CopyResult, DataParser, csv_values_to_string},
+    options::DefaultFileOptions,
+};
 
 pub fn escape_csv_string(csv_string: String) -> String {
     if csv_string
@@ -27,6 +32,66 @@ pub fn map_formatted_value(value: AnyValue) -> String {
     }
 }
 
+pub struct DataFrameParser {
+    options: DefaultFileOptions,
+    dataframe: DataFrame,
+}
+
+impl DataFrameParser {
+    pub fn set_dataframe(&mut self, dataframe: DataFrame) {
+        self.dataframe = dataframe;
+    }
+}
+
+#[async_trait::async_trait]
+impl DataParser for DataFrameParser {
+    type Options = DefaultFileOptions;
+
+    fn new(options: Self::Options) -> BulkDataResult<Self>
+    where
+        Self: Sized,
+    {
+        Ok(Self {
+            options,
+            dataframe: DataFrame::empty(),
+        })
+    }
+
+    fn options(&self) -> &Self::Options {
+        &self.options
+    }
+
+    async fn spool_records(
+        self,
+        record_channel: &mut Sender<BulkDataResult<String>>,
+    ) -> Option<SendError<BulkDataResult<String>>> {
+        let mut iters = self.dataframe.iter().map(|s| s.iter()).collect::<Vec<_>>();
+        for i in 0..self.dataframe.height() {
+            let row_data = iters
+                .iter_mut()
+                .map(|iter| {
+                    iter.next()
+                        .ok_or("Dataframe value was not found. This should never happen".to_string())
+                        .map(|value| map_formatted_value(value))
+                })
+                .collect::<Result<Vec<String>, _>>();
+            let Ok(csv_data) = row_data else {
+                return record_channel
+                    .send(Err(format!("Could not read record {}", (i + 1)).into()))
+                    .await
+                    .err();
+            };
+            let result = record_channel
+                .send(Ok(csv_values_to_string(csv_data)))
+                .await;
+            if let Err(error) = result {
+                return Some(error);
+            }
+        }
+        None
+    }
+}
+
 pub async fn load_dataframe(copy: &mut CopyPipe, dataframe: DataFrame) -> CopyResult {
     let mut iters = dataframe.iter().map(|s| s.iter()).collect::<Vec<_>>();
     for _ in 0..dataframe.height() {
@@ -42,7 +107,6 @@ pub async fn load_dataframe(copy: &mut CopyPipe, dataframe: DataFrame) -> CopyRe
     }
     Ok(())
 }
-
 
 #[cfg(test)]
 mod tests {
