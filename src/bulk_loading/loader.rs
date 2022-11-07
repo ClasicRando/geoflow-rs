@@ -125,10 +125,8 @@ impl<P: DataParser + Send + Sync + 'static> DataLoader<P> {
 
     pub async fn load_data(self, copy_options: CopyOptions, pool: PgPool) -> BulkLoadResult {
         let copy_statement = copy_options.copy_statement(self.0.options());
-        println!("Copy Statement\n{}", &copy_statement);
         let mut copy = pool.copy_in_raw(&copy_statement).await?;
         let (mut tx, mut rx) = mpsc_channel(1000);
-        // let parser = self.0;
         let spool_handle = tokio::spawn(async move {
             let error = self.0.spool_records(&mut tx).await;
             drop(tx);
@@ -144,10 +142,7 @@ impl<P: DataParser + Send + Sync + 'static> DataLoader<P> {
                     }
                     Err(error) => break Err(error),
                 },
-                None => {
-                    println!("Receive Channel Closed");
-                    break Ok(())
-                }
+                None => break Ok(())
             }
         };
         rx.close();

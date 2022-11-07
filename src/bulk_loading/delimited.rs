@@ -84,7 +84,6 @@ impl DataParser for DelimitedDataParser {
                     .err();
             };
             let Some(mut line) = line_option else {
-                println!("Found EOF");
                 break;
             };
             line.push('\n');
