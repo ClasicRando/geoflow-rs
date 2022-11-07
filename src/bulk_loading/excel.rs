@@ -1,9 +1,10 @@
-use calamine::{open_workbook_auto, DataType, Reader};
+use calamine::{open_workbook_auto, DataType, Range, Reader};
 use std::path::PathBuf;
+use tokio::sync::mpsc::{error::SendError, Sender};
 
 use super::{
     error::{BulkDataError, BulkDataResult},
-    loader::{copy_csv_values, CopyPipe, CopyResult},
+    loader::{copy_csv_values, csv_values_to_string, CopyPipe, CopyResult, DataParser},
     options::DataFileOptions,
 };
 
@@ -40,6 +41,91 @@ pub fn map_excel_value(value: &DataType) -> BulkDataResult<String> {
         DataType::Empty => String::new(),
         _ => format!("{}", value),
     })
+}
+
+pub struct ExcelDataParser {
+    options: ExcelOptions,
+    sheet: Range<DataType>,
+}
+
+#[async_trait::async_trait]
+impl DataParser for ExcelDataParser {
+    type Options = ExcelOptions;
+
+    fn new(options: Self::Options) -> BulkDataResult<Self> {
+        let (file_path, sheet_name) = (&options.file_path, &options.sheet_name);
+        let mut workbook = open_workbook_auto(file_path)?;
+        let sheet = match workbook.worksheet_range(sheet_name) {
+            Some(Ok(sheet)) => sheet,
+            _ => {
+                return Err(BulkDataError::Generic(format!(
+                    "Could not find sheet \"{}\" in {:?}",
+                    sheet_name, file_path
+                )))
+            }
+        };
+        Ok(Self {
+            options: options,
+            sheet: sheet,
+        })
+    }
+
+    fn options(&self) -> &Self::Options {
+        &self.options
+    }
+
+    async fn spool_records(
+        self,
+        record_channel: &mut Sender<BulkDataResult<String>>,
+    ) -> Option<SendError<BulkDataResult<String>>> {
+        let mut rows = self.sheet.rows();
+        let header = match rows.next() {
+            Some(row) => row,
+            None => {
+                return record_channel
+                    .send(Err(BulkDataError::Generic(format!(
+                        "Could not find a header row for excel file {:?}",
+                        self.options.file_path,
+                    ))))
+                    .await
+                    .err();
+            }
+        };
+        let header_size = header.len();
+        for (row_num, row) in rows.enumerate() {
+            let row_data = row
+                .iter()
+                .map(|value| map_excel_value(value))
+                .collect::<Result<Vec<String>, _>>();
+            let Ok(row_values) = row_data else {
+                return record_channel
+                    .send(Err(BulkDataError::Generic(format!(
+                        "Excel row {} has cells that contain errors",
+                        row_num + 1
+                    ))))
+                    .await
+                    .err();
+            };
+            if row_values.len() != header_size {
+                return record_channel
+                    .send(Err(BulkDataError::Generic(format!(
+                        "Excel row {} has {} values but expected {}",
+                        row_num + 1,
+                        row_values.len(),
+                        header_size
+                    ))))
+                    .await
+                    .err();
+            }
+            let result = record_channel
+                .send(Ok(csv_values_to_string(row_values)))
+                .await;
+            if let Err(error) = result {
+                return Some(error)
+            }
+        }
+        None
+    }
 }
 
 pub async fn load_excel_data(copy: &mut CopyPipe, options: &ExcelOptions) -> CopyResult {
@@ -121,7 +207,8 @@ mod tests {
     }
 
     #[test]
-    fn map_excel_value_should_return_string_with_newline_fixed_when_string_with_newline() -> BulkDataResult<()> {
+    fn map_excel_value_should_return_string_with_newline_fixed_when_string_with_newline(
+    ) -> BulkDataResult<()> {
         let expected = String::from("This is a test\nSecond line");
         let string = String::from("This is a test_x000d_Second line");
         let value = DataType::String(string);
@@ -133,7 +220,8 @@ mod tests {
     }
 
     #[test]
-    fn map_excel_value_should_return_string_with_carriage_return_fixed_when_string_with_carriage_return() -> BulkDataResult<()> {
+    fn map_excel_value_should_return_string_with_carriage_return_fixed_when_string_with_carriage_return(
+    ) -> BulkDataResult<()> {
         let expected = String::from("This is a test\rSecond line");
         let string = String::from("This is a test_x000a_Second line");
         let value = DataType::String(string);
@@ -184,8 +272,10 @@ mod tests {
             Ok(_) => panic!("Test of map_excel_value should have returned an Err variant"),
             Err(error) => match error {
                 BulkDataError::Generic(s) => s,
-                _ => panic!("Test of map_excel_value should have returned a Generic BulkDataError Variant"),
-            }
+                _ => panic!(
+                    "Test of map_excel_value should have returned a Generic BulkDataError Variant"
+                ),
+            },
         };
 
         assert_eq!("Cell error, #DIV/0!", actual);

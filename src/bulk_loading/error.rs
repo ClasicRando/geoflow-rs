@@ -20,14 +20,14 @@ impl std::error::Error for BulkDataError {}
 impl Display for BulkDataError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            BulkDataError::Generic(string) => write!(f, "Loader Error\n{}", string),
-            BulkDataError::Polars(error) => write!(f, "Polars Error\n{}", error),
-            BulkDataError::SQL(error) => write!(f, "Polars Error\n{}", error),
-            BulkDataError::Fmt(error) => write!(f, "Format Error\n{}", error),
-            BulkDataError::IO(error) => write!(f, "IO Error\n{}", error),
-            BulkDataError::Excel(error) => write!(f, "Excel Error\n{}", error),
-            BulkDataError::Shp(error) => write!(f, "Shapefile Error\n{}", error),
-            BulkDataError::GeoJSON(error) => write!(f, "GeoJSON Error\n{}", error),
+            Self::Generic(string) => write!(f, "Loader Error\n{}", string),
+            Self::Polars(error) => write!(f, "Polars Error\n{}", error),
+            Self::SQL(error) => write!(f, "Polars Error\n{}", error),
+            Self::Fmt(error) => write!(f, "Format Error\n{}", error),
+            Self::IO(error) => write!(f, "IO Error\n{}", error),
+            Self::Excel(error) => write!(f, "Excel Error\n{}", error),
+            Self::Shp(error) => write!(f, "Shapefile Error\n{}", error),
+            Self::GeoJSON(error) => write!(f, "GeoJSON Error\n{}", error),
         }
     }
 }
@@ -83,5 +83,11 @@ impl From<shapefile::Error> for BulkDataError {
 impl From<geojson::Error> for BulkDataError {
     fn from(error: geojson::Error) -> Self {
         Self::GeoJSON(error)
+    }
+}
+
+impl From<tokio::sync::oneshot::error::RecvError> for BulkDataError {
+    fn from(error: tokio::sync::oneshot::error::RecvError) -> Self {
+        Self::Generic(format!("{}", error))
     }
 }
