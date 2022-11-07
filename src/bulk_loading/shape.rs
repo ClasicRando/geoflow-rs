@@ -1,8 +1,11 @@
 use shapefile::{dbase::FieldValue, Shape};
+use std::{fs::File, io::BufReader};
+use tokio::sync::mpsc::{error::SendError, Sender};
 use wkt::ToWkt;
 
 use super::{
-    loader::{copy_csv_iter, CopyPipe, CopyResult},
+    error::BulkDataResult,
+    loader::{csv_iter_to_string, DataParser},
     options::DefaultFileOptions,
 };
 
@@ -35,22 +38,81 @@ fn map_field_value(value: FieldValue) -> String {
     }
 }
 
-pub async fn load_shape_data(copy: &mut CopyPipe, options: &DefaultFileOptions) -> CopyResult {
-    let mut reader = shapefile::Reader::from_path(&options.file_path)?;
-    for feature in reader.iter_shapes_and_records() {
-        let (shape, record) = feature?;
-        let wkt = match shape {
-            Shape::NullShape => String::new(),
-            _ => {
-                let geo = geo_types::Geometry::<f64>::try_from(shape)?;
-                format!("{}", geo.wkt_string())
-            }
-        };
-        let csv_row = record
-            .into_iter()
-            .map(|(_, value)| map_field_value(value))
-            .chain(std::iter::once(wkt));
-        copy_csv_iter(copy, csv_row).await?;
-    }
-    Ok(())
+pub struct ShapeDataParser {
+    options: DefaultFileOptions,
+    reader: shapefile::Reader<BufReader<File>>,
 }
+
+#[async_trait::async_trait]
+impl DataParser for ShapeDataParser {
+    type Options = DefaultFileOptions;
+
+    fn new(options: Self::Options) -> BulkDataResult<Self>
+    where
+        Self: Sized,
+    {
+        let reader = shapefile::Reader::from_path(&options.file_path)?;
+        Ok(ShapeDataParser { options, reader })
+    }
+
+    fn options(&self) -> &Self::Options {
+        &self.options
+    }
+
+    async fn spool_records(
+        mut self,
+        record_channel: &mut Sender<BulkDataResult<String>>,
+    ) -> Option<SendError<BulkDataResult<String>>> {
+        for (feature_number, feature) in self.reader.iter_shapes_and_records().enumerate() {
+            let Ok((shape, record)) = feature else {
+                return record_channel
+                    .send(Err(format!("Could not obtain feature {}", &feature_number).into()))
+                    .await
+                    .err();
+            };
+            let wkt = match shape {
+                Shape::NullShape => String::new(),
+                _ => {
+                    let Ok(geo) = geo_types::Geometry::<f64>::try_from(shape) else {
+                        return record_channel
+                            .send(Err(format!("Could not obtain shape for feature {}", &feature_number).into()))
+                            .await
+                            .err();
+                    };
+                    geo.wkt_string()
+                }
+            };
+            let csv_iter = record
+                .into_iter()
+                .map(|(_, value)| map_field_value(value))
+                .chain(std::iter::once(wkt));
+            let result = record_channel
+                .send(Ok(csv_iter_to_string(csv_iter)))
+                .await;
+            if let Err(error) = result {
+                return Some(error);
+            }
+        }
+        None
+    }
+}
+
+// pub async fn load_shape_data(copy: &mut CopyPipe, options: &DefaultFileOptions) -> CopyResult {
+//     let mut reader = shapefile::Reader::from_path(&options.file_path)?;
+//     for feature in reader.iter_shapes_and_records() {
+//         let (shape, record) = feature?;
+//         let wkt = match shape {
+//             Shape::NullShape => String::new(),
+//             _ => {
+//                 let geo = geo_types::Geometry::<f64>::try_from(shape)?;
+//                 format!("{}", geo.wkt_string())
+//             }
+//         };
+//         let csv_row = record
+//             .into_iter()
+//             .map(|(_, value)| map_field_value(value))
+//             .chain(std::iter::once(wkt));
+//         copy_csv_iter(copy, csv_row).await?;
+//     }
+//     Ok(())
+// }

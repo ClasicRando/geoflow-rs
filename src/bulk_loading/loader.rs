@@ -1,14 +1,14 @@
 use std::path::PathBuf;
 
 use super::{
-    delimited::{load_delimited_data, DelimitedDataOptions, DelimitedDataParser},
+    delimited::{DelimitedDataOptions, DelimitedDataParser},
     error::{BulkDataError, BulkDataResult},
-    excel::{load_excel_data, ExcelDataParser, ExcelOptions},
+    excel::{ExcelDataParser, ExcelOptions},
     geo_json::load_geo_json_data,
     ipc::load_ipc_data,
     options::{DataFileOptions, DefaultFileOptions},
     parquet::load_parquet_data,
-    shape::load_shape_data,
+    shape::ShapeDataParser,
     utilities::{escape_csv_string, DataFrameParser},
 };
 use itertools::Itertools;
@@ -116,6 +116,13 @@ impl DataLoader<ExcelDataParser> {
     pub fn from_excel(file_path: PathBuf, sheet_name: String) -> BulkDataResult<Self> {
         let options = ExcelOptions::new(file_path, sheet_name);
         Ok(Self::new(ExcelDataParser::new(options)?))
+    }
+}
+
+impl DataLoader<ShapeDataParser> {
+    pub fn from_shape(file_path: PathBuf) -> BulkDataResult<Self> {
+        let options = DefaultFileOptions::new(file_path);
+        Ok(Self::new(ShapeDataParser::new(options)?))
     }
 }
 
