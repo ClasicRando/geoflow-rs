@@ -1,8 +1,4 @@
-use super::{
-    error::BulkDataResult,
-    loader::{CopyPipe, CopyResult, DataParser},
-    options::DataFileOptions,
-};
+use super::{error::BulkDataResult, loader::DataParser, options::DataFileOptions};
 use std::path::PathBuf;
 use tokio::{
     fs::File as TkFile,
@@ -97,11 +93,11 @@ impl DataParser for DelimitedDataParser {
     }
 }
 
-pub async fn load_delimited_data(
-    copy: &mut CopyPipe,
-    options: &DelimitedDataOptions,
-) -> CopyResult {
-    let file = TkFile::open(&options.file_path).await?;
-    copy.read_from(file).await?;
-    Ok(())
-}
+// pub async fn load_delimited_data(
+//     copy: &mut CopyPipe,
+//     options: &DelimitedDataOptions,
+// ) -> CopyResult {
+//     let file = TkFile::open(&options.file_path).await?;
+//     copy.read_from(file).await?;
+//     Ok(())
+// }
