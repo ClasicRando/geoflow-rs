@@ -4,7 +4,7 @@ use tokio::sync::mpsc::{error::SendError, Sender};
 
 use super::{
     error::{BulkDataError, BulkDataResult},
-    loader::{copy_csv_values, csv_values_to_string, CopyPipe, CopyResult, DataParser},
+    loader::{csv_values_to_string, DataParser},
     options::DataFileOptions,
 };
 
@@ -121,53 +121,53 @@ impl DataParser for ExcelDataParser {
                 .send(Ok(csv_values_to_string(row_values)))
                 .await;
             if let Err(error) = result {
-                return Some(error)
+                return Some(error);
             }
         }
         None
     }
 }
 
-pub async fn load_excel_data(copy: &mut CopyPipe, options: &ExcelOptions) -> CopyResult {
-    let (file_path, sheet_name) = (&options.file_path, &options.sheet_name);
-    let mut workbook = open_workbook_auto(file_path)?;
-    let sheet = match workbook.worksheet_range(sheet_name) {
-        Some(Ok(sheet)) => sheet,
-        _ => {
-            return Err(BulkDataError::Generic(format!(
-                "Could not find sheet \"{}\" in {:?}",
-                sheet_name, file_path
-            )))
-        }
-    };
-    let mut rows = sheet.rows();
-    let header = match rows.next() {
-        Some(row) => row,
-        None => {
-            return Err(BulkDataError::Generic(format!(
-                "Could not find a header row for excel file {:?}",
-                file_path
-            )))
-        }
-    };
-    let header_size = header.len();
-    for (row_num, row) in rows.enumerate() {
-        let row_data = row
-            .iter()
-            .map(|value| map_excel_value(value))
-            .collect::<Result<Vec<String>, _>>()?;
-        if row_data.len() != header_size {
-            return Err(BulkDataError::Generic(format!(
-                "Excel row {} has {} values but expected {}",
-                row_num + 1,
-                row_data.len(),
-                header_size
-            )));
-        }
-        copy_csv_values(copy, row_data).await?;
-    }
-    Ok(())
-}
+// pub async fn load_excel_data(copy: &mut CopyPipe, options: &ExcelOptions) -> CopyResult {
+//     let (file_path, sheet_name) = (&options.file_path, &options.sheet_name);
+//     let mut workbook = open_workbook_auto(file_path)?;
+//     let sheet = match workbook.worksheet_range(sheet_name) {
+//         Some(Ok(sheet)) => sheet,
+//         _ => {
+//             return Err(BulkDataError::Generic(format!(
+//                 "Could not find sheet \"{}\" in {:?}",
+//                 sheet_name, file_path
+//             )))
+//         }
+//     };
+//     let mut rows = sheet.rows();
+//     let header = match rows.next() {
+//         Some(row) => row,
+//         None => {
+//             return Err(BulkDataError::Generic(format!(
+//                 "Could not find a header row for excel file {:?}",
+//                 file_path
+//             )))
+//         }
+//     };
+//     let header_size = header.len();
+//     for (row_num, row) in rows.enumerate() {
+//         let row_data = row
+//             .iter()
+//             .map(|value| map_excel_value(value))
+//             .collect::<Result<Vec<String>, _>>()?;
+//         if row_data.len() != header_size {
+//             return Err(BulkDataError::Generic(format!(
+//                 "Excel row {} has {} values but expected {}",
+//                 row_num + 1,
+//                 row_data.len(),
+//                 header_size
+//             )));
+//         }
+//         copy_csv_values(copy, row_data).await?;
+//     }
+//     Ok(())
+// }
 
 #[cfg(test)]
 mod tests {

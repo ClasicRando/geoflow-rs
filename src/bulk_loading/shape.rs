@@ -86,9 +86,7 @@ impl DataParser for ShapeDataParser {
                 .into_iter()
                 .map(|(_, value)| map_field_value(value))
                 .chain(std::iter::once(wkt));
-            let result = record_channel
-                .send(Ok(csv_iter_to_string(csv_iter)))
-                .await;
+            let result = record_channel.send(Ok(csv_iter_to_string(csv_iter))).await;
             if let Err(error) = result {
                 return Some(error);
             }

@@ -3,7 +3,7 @@ use tokio::sync::mpsc::{error::SendError, Sender};
 
 use super::{
     error::BulkDataResult,
-    loader::{copy_csv_values, CopyPipe, CopyResult, DataParser, csv_values_to_string},
+    loader::{copy_csv_values, csv_values_to_string, CopyPipe, CopyResult, DataParser},
     options::DefaultFileOptions,
 };
 
@@ -71,7 +71,9 @@ impl DataParser for DataFrameParser {
                 .iter_mut()
                 .map(|iter| {
                     iter.next()
-                        .ok_or("Dataframe value was not found. This should never happen".to_string())
+                        .ok_or(
+                            "Dataframe value was not found. This should never happen".to_string(),
+                        )
                         .map(|value| map_formatted_value(value))
                 })
                 .collect::<Result<Vec<String>, _>>();
