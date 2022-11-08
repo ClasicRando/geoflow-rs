@@ -1,4 +1,4 @@
-use super::{error::BulkDataResult, loader::DataParser, options::DataFileOptions};
+use super::{error::BulkDataResult, load::DataParser, options::DataFileOptions};
 use std::path::PathBuf;
 use tokio::{
     fs::File as TkFile,

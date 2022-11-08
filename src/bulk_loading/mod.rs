@@ -1,4 +1,4 @@
-pub mod loader;
+pub mod load;
 pub mod options;
 pub mod error;
 pub mod delimited;

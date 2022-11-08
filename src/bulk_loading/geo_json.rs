@@ -6,7 +6,7 @@ use wkt::ToWkt;
 
 use super::{
     error::BulkDataResult,
-    loader::{csv_values_to_string, DataParser},
+    load::{csv_values_to_string, DataParser},
     options::DefaultFileOptions,
 };
 
