@@ -5,14 +5,13 @@ use super::{
     error::{BulkDataError, BulkDataResult},
     excel::{ExcelDataParser, ExcelOptions},
     geo_json::load_geo_json_data,
-    ipc::load_ipc_data,
+    ipc::ipc_data_to_df,
     options::{DataFileOptions, DefaultFileOptions},
-    parquet::load_parquet_data,
+    parquet::parquet_data_to_df,
     shape::ShapeDataParser,
     utilities::{escape_csv_string, DataFrameParser},
 };
 use itertools::Itertools;
-use polars::prelude::DataFrame;
 use sqlx::pool::PoolConnection;
 use sqlx::postgres::PgCopyIn;
 use sqlx::{PgPool, Postgres};
@@ -106,7 +105,11 @@ pub trait DataParser {
 pub struct DataLoader<P: DataParser + Send + Sync + 'static>(P);
 
 impl DataLoader<DelimitedDataParser> {
-    pub fn from_delimited(file_path: PathBuf, delimiter: char, qualified: bool) -> BulkDataResult<Self> {
+    pub fn from_delimited(
+        file_path: PathBuf,
+        delimiter: char,
+        qualified: bool,
+    ) -> BulkDataResult<Self> {
         let options = DelimitedDataOptions::new(file_path, delimiter, qualified);
         Ok(Self::new(DelimitedDataParser::new(options)?))
     }
@@ -127,7 +130,16 @@ impl DataLoader<ShapeDataParser> {
 }
 
 impl DataLoader<DataFrameParser> {
-    pub fn from_data_frame(file_path: PathBuf, dataframe: DataFrame) -> BulkDataResult<Self> {
+    pub fn from_parquet(file_path: PathBuf) -> BulkDataResult<Self> {
+        let dataframe = parquet_data_to_df(&file_path)?;
+        let options = DefaultFileOptions::new(file_path);
+        let mut parser = DataFrameParser::new(options)?;
+        parser.set_dataframe(dataframe);
+        Ok(Self::new(parser))
+    }
+
+    pub fn from_ipc(file_path: PathBuf) -> BulkDataResult<Self> {
+        let dataframe = ipc_data_to_df(&file_path)?;
         let options = DefaultFileOptions::new(file_path);
         let mut parser = DataFrameParser::new(options)?;
         parser.set_dataframe(dataframe);
@@ -159,14 +171,14 @@ impl<P: DataParser + Send + Sync + 'static> DataLoader<P> {
                     }
                     Err(error) => break Err(error),
                 },
-                None => break Ok(())
+                None => break Ok(()),
             }
         };
         rx.close();
         match spool_handle.await {
             Ok(Some(value)) => println!("SendError\n{:?}", value.0),
             Ok(None) => println!("Finished spool handle successfully"),
-            Err(error) => println!("Error trying to finish the spool handle\n{}", error)
+            Err(error) => println!("Error trying to finish the spool handle\n{}", error),
         }
         match result {
             Ok(_) => Ok(copy.finish().await?),
