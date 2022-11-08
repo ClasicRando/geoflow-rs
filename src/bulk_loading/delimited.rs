@@ -92,12 +92,3 @@ impl DataParser for DelimitedDataParser {
         None
     }
 }
-
-// pub async fn load_delimited_data(
-//     copy: &mut CopyPipe,
-//     options: &DelimitedDataOptions,
-// ) -> CopyResult {
-//     let file = TkFile::open(&options.file_path).await?;
-//     copy.read_from(file).await?;
-//     Ok(())
-// }

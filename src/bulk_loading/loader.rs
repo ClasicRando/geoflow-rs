@@ -1,4 +1,7 @@
+use itertools::Itertools;
+use sqlx::PgPool;
 use std::path::PathBuf;
+use tokio::sync::mpsc::{channel as mpsc_channel, error::SendError, Sender};
 
 use super::{
     delimited::{DelimitedDataOptions, DelimitedDataParser},
@@ -11,15 +14,8 @@ use super::{
     shape::ShapeDataParser,
     utilities::{escape_csv_string, DataFrameParser},
 };
-use itertools::Itertools;
-use sqlx::pool::PoolConnection;
-use sqlx::postgres::PgCopyIn;
-use sqlx::{PgPool, Postgres};
-use tokio::sync::mpsc::{channel as mpsc_channel, error::SendError, Sender};
 
-pub type CopyPipe = PgCopyIn<PoolConnection<Postgres>>;
 pub type BulkLoadResult = Result<u64, BulkDataError>;
-pub type CopyResult = Result<(), BulkDataError>;
 
 pub struct CopyOptions {
     table_name: String,
