@@ -94,23 +94,3 @@ impl DataParser for ShapeDataParser {
         None
     }
 }
-
-// pub async fn load_shape_data(copy: &mut CopyPipe, options: &DefaultFileOptions) -> CopyResult {
-//     let mut reader = shapefile::Reader::from_path(&options.file_path)?;
-//     for feature in reader.iter_shapes_and_records() {
-//         let (shape, record) = feature?;
-//         let wkt = match shape {
-//             Shape::NullShape => String::new(),
-//             _ => {
-//                 let geo = geo_types::Geometry::<f64>::try_from(shape)?;
-//                 format!("{}", geo.wkt_string())
-//             }
-//         };
-//         let csv_row = record
-//             .into_iter()
-//             .map(|(_, value)| map_field_value(value))
-//             .chain(std::iter::once(wkt));
-//         copy_csv_iter(copy, csv_row).await?;
-//     }
-//     Ok(())
-// }

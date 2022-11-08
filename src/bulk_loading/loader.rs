@@ -4,7 +4,7 @@ use super::{
     delimited::{DelimitedDataOptions, DelimitedDataParser},
     error::{BulkDataError, BulkDataResult},
     excel::{ExcelDataParser, ExcelOptions},
-    geo_json::load_geo_json_data,
+    geo_json::GeoJsonParser,
     ipc::ipc_data_to_df,
     options::{DataFileOptions, DefaultFileOptions},
     parquet::parquet_data_to_df,
@@ -56,16 +56,6 @@ pub fn csv_iter_to_string<I: Iterator<Item = String>>(csv_iter: I) -> String {
     csv_data
 }
 
-pub async fn copy_csv_iter<I: Iterator<Item = String>>(
-    copy: &mut CopyPipe,
-    csv_iter: I,
-) -> CopyResult {
-    let mut csv_data = csv_iter.map(|s| escape_csv_string(s)).join(",");
-    csv_data.push('\n');
-    copy.send(csv_data.as_bytes()).await?;
-    Ok(())
-}
-
 pub fn csv_values_to_string<I: IntoIterator<Item = String>>(csv_values: I) -> String {
     let mut csv_data = csv_values
         .into_iter()
@@ -73,19 +63,6 @@ pub fn csv_values_to_string<I: IntoIterator<Item = String>>(csv_values: I) -> St
         .join(",");
     csv_data.push('\n');
     csv_data
-}
-
-pub async fn copy_csv_values<I: IntoIterator<Item = String>>(
-    copy: &mut CopyPipe,
-    csv_values: I,
-) -> CopyResult {
-    let mut csv_data = csv_values
-        .into_iter()
-        .map(|s| escape_csv_string(s))
-        .join(",");
-    csv_data.push('\n');
-    copy.send(csv_data.as_bytes()).await?;
-    Ok(())
 }
 
 #[async_trait::async_trait]
@@ -126,6 +103,13 @@ impl DataLoader<ShapeDataParser> {
     pub fn from_shape(file_path: PathBuf) -> BulkDataResult<Self> {
         let options = DefaultFileOptions::new(file_path);
         Ok(Self::new(ShapeDataParser::new(options)?))
+    }
+}
+
+impl DataLoader<GeoJsonParser> {
+    pub fn from_geo_json(file_path: PathBuf) -> BulkDataResult<Self> {
+        let options = DefaultFileOptions::new(file_path);
+        Ok(Self::new(GeoJsonParser::new(options)?))
     }
 }
 
