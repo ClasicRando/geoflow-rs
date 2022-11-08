@@ -1,5 +1,5 @@
 use geo_types::Geometry;
-use geojson::FeatureReader;
+use geojson::{FeatureReader, JsonValue};
 use std::{fs::File, io::BufReader};
 use tokio::sync::mpsc::{error::SendError, Sender};
 use wkt::ToWkt;
@@ -9,6 +9,16 @@ use super::{
     loader::{csv_values_to_string, DataParser},
     options::DefaultFileOptions,
 };
+
+fn map_json_value(value: &JsonValue) -> String {
+    match value {
+        JsonValue::Null => String::from(""),
+        JsonValue::Bool(b) => b.to_string(),
+        JsonValue::Number(n) => format!("{}", n),
+        JsonValue::String(s) => s.to_owned(),
+        _ => format!("{}", value),
+    }
+}
 
 pub struct GeoJsonParser {
     options: DefaultFileOptions,
@@ -52,7 +62,7 @@ impl DataParser for GeoJsonParser {
                 .unwrap_or_default();
             let mut csv_row: Vec<String> = feature
                 .properties_iter()
-                .map(|(_, value)| format!("{}", value))
+                .map(|(_, value)| map_json_value(value))
                 .collect();
             csv_row.push(geom);
             let csv_data = csv_values_to_string(csv_row);
@@ -62,5 +72,80 @@ impl DataParser for GeoJsonParser {
             }
         }
         None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use geojson::JsonValue;
+    use rocket::serde::json::serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn json_value_formatting_array() {
+        let value = json!(["This", "is", "a", "test"]);
+
+        let actual = map_json_value(&value);
+
+        assert_eq!("[\"This\",\"is\",\"a\",\"test\"]", actual);
+    }
+
+    #[test]
+    fn json_value_formatting_bool_true() {
+        let value = json!(true);
+
+        let actual = map_json_value(&value);
+
+        assert_eq!("true", actual);
+    }
+
+    #[test]
+    fn json_value_formatting_bool_false() {
+        let value = json!(false);
+
+        let actual = map_json_value(&value);
+
+        assert_eq!("false", actual);
+    }
+
+    #[test]
+    fn json_value_formatting_object() {
+        let value = json!({
+            "code": 1,
+            "test": true
+        });
+
+        let actual = map_json_value(&value);
+
+        assert_eq!("{\"code\":1,\"test\":true}", actual);
+    }
+
+    #[test]
+    fn json_value_formatting_null() {
+        let value = JsonValue::Null;
+
+        let actual = map_json_value(&value);
+
+        assert_eq!("", actual);
+    }
+
+    #[test]
+    fn json_value_formatting_number() {
+        let value = json!(12.5);
+
+        let actual = map_json_value(&value);
+
+        assert_eq!("12.5", actual);
+    }
+
+    #[test]
+    fn json_value_formatting_string() {
+        let expected = "This is a test";
+        let value = json!(expected);
+
+        let actual = map_json_value(&value);
+
+        assert_eq!(expected, actual);
     }
 }
