@@ -1,5 +1,14 @@
-use super::{error::BulkDataResult, load::DataParser, options::DataFileOptions};
-use std::path::PathBuf;
+use super::{
+    analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
+    error::BulkDataResult,
+    load::DataParser,
+    options::DataFileOptions,
+};
+use std::{
+    fs::File,
+    io::{BufRead, BufReader},
+    path::PathBuf,
+};
 use tokio::{
     fs::File as TkFile,
     io::{AsyncBufReadExt, BufReader as TkBufReader},
@@ -36,6 +45,35 @@ impl DataFileOptions for DelimitedDataOptions {
     #[inline]
     fn qualified(&self) -> &bool {
         &self.qualified
+    }
+}
+
+pub struct DelimitedSchemaParser(DelimitedDataOptions);
+
+impl SchemaParser for DelimitedSchemaParser {
+    type Options = DelimitedDataOptions;
+
+    fn new(options: Self::Options) -> Self
+    where
+        Self: Sized,
+    {
+        Self(options)
+    }
+
+    fn schema(&self) -> BulkDataResult<Schema> {
+        let Some(table_name) = self.0.file_path.file_name().and_then(|f| f.to_str()) else {
+            return Err(format!("Could not get filename for \"{:?}\"", &self.0.file_path).into())
+        };
+        let file = File::open(&self.0.file_path)?;
+        let buf_reader = BufReader::new(file);
+        let Some(Ok(header_line)) = buf_reader.lines().next() else {
+            return Err(format!("Could not get first line of \"{:?}\"", &self.0.file_path).into())
+        };
+        let columns: Vec<ColumnMetadata> = header_line
+            .split(self.0.delimiter)
+            .map(|field| ColumnMetadata::new(field, ColumnType::Text))
+            .collect();
+        Ok(Schema::new(table_name, columns))
     }
 }
 
