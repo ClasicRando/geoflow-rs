@@ -72,7 +72,7 @@ impl SchemaParser for DelimitedSchemaParser {
         let columns: Vec<ColumnMetadata> = header_line
             .split(self.0.delimiter)
             .enumerate()
-            .map(|(i, field)| ColumnMetadata::new(field, i, ColumnType::Text))
+            .map(|(i, field)| ColumnMetadata::new(field.to_owned(), i, ColumnType::Text))
             .collect::<BulkDataResult<_>>()?;
         Schema::new(table_name, columns)
     }
