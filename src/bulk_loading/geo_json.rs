@@ -5,10 +5,74 @@ use tokio::sync::mpsc::{error::SendError, Sender};
 use wkt::ToWkt;
 
 use super::{
+    analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
     load::{csv_values_to_string, DataParser},
     options::DefaultFileOptions,
 };
+
+fn column_type_from_value(value: &JsonValue) -> Option<ColumnType> {
+    match value {
+        JsonValue::Null => None,
+        JsonValue::Bool(_) => Some(ColumnType::Boolean),
+        JsonValue::Number(_) => Some(ColumnType::Number),
+        JsonValue::String(_) => Some(ColumnType::Text),
+        JsonValue::Array(_) => Some(ColumnType::Json),
+        JsonValue::Object(_) => Some(ColumnType::Json),
+    }
+}
+
+pub struct GeoJsonSchemaParser(DefaultFileOptions);
+
+impl SchemaParser for GeoJsonSchemaParser {
+    type Options = DefaultFileOptions;
+
+    fn new(options: Self::Options) -> Self
+    where
+        Self: Sized,
+    {
+        Self(options)
+    }
+
+    fn schema(&self) -> BulkDataResult<Schema> {
+        let Some(table_name) = self.0.file_path.file_name().and_then(|f| f.to_str()) else {
+            return Err(format!("Could not get filename for \"{:?}\"", &self.0.file_path).into())
+        };
+        let file = File::open(&self.0.file_path)?;
+        let buff_reader = BufReader::new(file);
+        let feature_reader = FeatureReader::from_reader(buff_reader);
+        let mut undefined_type = false;
+        let mut columns: Vec<(String, usize, Option<ColumnType>)> = Vec::new();
+        for feature in feature_reader.features() {
+            let feature = feature?;
+            for (i, (field, value)) in feature.properties_iter().enumerate() {
+                // Get column index, update if in vector and undefined type
+                let column = columns.get_mut(i).map(|(_, _, typ)| {
+                    if typ.is_none() {
+                        *typ = column_type_from_value(value);
+                        undefined_type = typ.is_none();
+                    }
+                });
+                // If not in vector, add column entry
+                if column.is_none() {
+                    let typ = column_type_from_value(value);
+                    undefined_type = typ.is_none();
+                    columns.push((field.to_owned(), i, typ));
+                }
+            }
+            if !undefined_type {
+                break;
+            }
+        }
+        let columns: Vec<ColumnMetadata> = columns
+            .into_iter()
+            .map(|(field, index, typ)| {
+                ColumnMetadata::new(field, index, typ.unwrap_or(ColumnType::Text))
+            })
+            .collect::<BulkDataResult<_>>()?;
+        Schema::new(table_name, columns)
+    }
+}
 
 fn map_json_value(value: &JsonValue) -> String {
     match value {
