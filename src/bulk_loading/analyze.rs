@@ -1,4 +1,29 @@
-use super::{error::BulkDataResult, options::DataFileOptions};
+use super::{
+    delimited::{DelimitedDataOptions, DelimitedSchemaParser},
+    error::BulkDataResult,
+    options::DataFileOptions,
+};
+use lazy_static::lazy_static;
+use regex::Regex;
+
+lazy_static! {
+    static ref SQL_NAME_REGEX: Regex = Regex::new("^[A-Z_][A-Z_0-9]{1,64}$").unwrap();
+}
+
+fn clean_sql_name(name: &str) -> Option<String> {
+    lazy_static! {
+        static ref SQL_NAME_CLEAN_REGEX1: Regex = Regex::new("[^A-Z_0-9]").unwrap();
+        static ref SQL_NAME_CLEAN_REGEX2: Regex = Regex::new("^([0-9])").unwrap();
+        static ref SQL_NAME_CLEAN_REGEX3: Regex = Regex::new("_{2,}").unwrap();
+    }
+    let name = SQL_NAME_CLEAN_REGEX1.replace(name, "_");
+    let name = SQL_NAME_CLEAN_REGEX2.replace(&name, "_$1");
+    let name = SQL_NAME_CLEAN_REGEX2.replace(&name, "_");
+    if name.is_empty() {
+        return None;
+    }
+    Some(name.to_string())
+}
 
 pub enum ColumnType {
     Text,
@@ -44,15 +69,27 @@ impl ColumnType {
 
 pub struct ColumnMetadata {
     name: String,
+    index: usize,
     column_type: ColumnType,
 }
 
 impl ColumnMetadata {
-    pub fn new(name: &str, column_type: ColumnType) -> Self {
-        Self {
-            name: name.to_owned(),
-            column_type,
+    pub fn new(name: &str, index: usize, column_type: ColumnType) -> BulkDataResult<Self> {
+        if SQL_NAME_REGEX.is_match(name) {
+            return Ok(Self {
+                name: name.to_owned(),
+                index,
+                column_type,
+            });
         }
+        let Some(column_name) = clean_sql_name(name) else {
+            return Err(format!("Column name for index {} was empty after cleaning", index).into());
+        };
+        Ok(Self {
+            name: column_name,
+            index,
+            column_type,
+        })
     }
 }
 
@@ -62,11 +99,20 @@ pub struct Schema {
 }
 
 impl Schema {
-    pub fn new(table_name: &str, columns: Vec<ColumnMetadata>) -> Self {
-        Self {
-            table_name: table_name.to_owned(),
-            columns,
+    pub fn new(table_name: &str, columns: Vec<ColumnMetadata>) -> BulkDataResult<Self> {
+        if SQL_NAME_REGEX.is_match(table_name) {
+            return Ok(Self {
+                table_name: table_name.to_owned(),
+                columns,
+            });
         }
+        let Some(table_name) = clean_sql_name(table_name) else {
+            return Err(format!("Table Name {} was empty after cleaning", table_name).into());
+        };
+        Ok(Self {
+            table_name,
+            columns,
+        })
     }
 }
 
@@ -80,6 +126,12 @@ pub trait SchemaParser {
 }
 
 pub struct SchemaAnalyzer<P: SchemaParser>(P);
+
+impl SchemaAnalyzer<DelimitedSchemaParser> {
+    pub fn new(options: DelimitedDataOptions) -> Self {
+        Self(DelimitedSchemaParser::new(options))
+    }
+}
 
 impl<P: SchemaParser> SchemaAnalyzer<P> {
     pub fn schema(&self) -> BulkDataResult<Schema> {
