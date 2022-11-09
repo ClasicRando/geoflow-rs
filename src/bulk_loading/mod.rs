@@ -8,3 +8,4 @@ pub mod shape;
 pub mod geo_json;
 pub mod ipc;
 pub mod parquet;
+pub mod analyze;
