@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use tokio::sync::mpsc::{error::SendError, Sender};
 
 use super::{
+    analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
     error::{BulkDataError, BulkDataResult},
     load::{csv_values_to_string, DataParser},
     options::DataFileOptions,
@@ -23,6 +24,51 @@ impl ExcelOptions {
 }
 
 impl DataFileOptions for ExcelOptions {}
+
+pub struct ExcelSchemaParser(ExcelOptions);
+
+impl SchemaParser for ExcelSchemaParser {
+    type Options = ExcelOptions;
+
+    fn new(options: Self::Options) -> Self
+    where
+        Self: Sized,
+    {
+        Self(options)
+    }
+
+    fn schema(&self) -> BulkDataResult<Schema> {
+        let Some(table_name) = self.0.file_path.file_name().and_then(|f| f.to_str()) else {
+            return Err(format!("Could not get filename for \"{:?}\"", &self.0.file_path).into())
+        };
+        let mut workbook = open_workbook_auto(&self.0.file_path)?;
+        let sheet = match workbook.worksheet_range(&self.0.sheet_name) {
+            Some(Ok(sheet)) => sheet,
+            _ => {
+                return Err(format!(
+                    "Could not find sheet \"{}\" in {:?}",
+                    &self.0.sheet_name, &self.0.file_path
+                )
+                .into())
+            }
+        };
+        let Some(header_row) = sheet.rows().next() else {
+            return Err(format!(
+                "Could not find header row in \"{}\" of {:?}",
+                &self.0.sheet_name, &self.0.file_path
+            ).into())
+        };
+        let columns = header_row
+            .iter()
+            .enumerate()
+            .map(|(i, field)| -> BulkDataResult<ColumnMetadata> {
+                let field_value = map_excel_value(field)?;
+                ColumnMetadata::new(&field_value, i, ColumnType::Text)
+            })
+            .collect::<Result<Vec<ColumnMetadata>, _>>()?;
+        Schema::new(table_name, columns)
+    }
+}
 
 pub fn map_excel_value(value: &DataType) -> BulkDataResult<String> {
     Ok(match value {
@@ -99,21 +145,22 @@ impl DataParser for ExcelDataParser {
                 .collect::<Result<Vec<String>, _>>();
             let Ok(row_values) = row_data else {
                 return record_channel
-                    .send(Err(BulkDataError::Generic(format!(
+                    .send(Err(format!(
                         "Excel row {} has cells that contain errors",
                         row_num + 1
-                    ))))
+                    ).into()))
                     .await
                     .err();
             };
             if row_values.len() != header_size {
                 return record_channel
-                    .send(Err(BulkDataError::Generic(format!(
+                    .send(Err(format!(
                         "Excel row {} has {} values but expected {}",
                         row_num + 1,
                         row_values.len(),
                         header_size
-                    ))))
+                    )
+                    .into()))
                     .await
                     .err();
             }
@@ -127,47 +174,6 @@ impl DataParser for ExcelDataParser {
         None
     }
 }
-
-// pub async fn load_excel_data(copy: &mut CopyPipe, options: &ExcelOptions) -> CopyResult {
-//     let (file_path, sheet_name) = (&options.file_path, &options.sheet_name);
-//     let mut workbook = open_workbook_auto(file_path)?;
-//     let sheet = match workbook.worksheet_range(sheet_name) {
-//         Some(Ok(sheet)) => sheet,
-//         _ => {
-//             return Err(BulkDataError::Generic(format!(
-//                 "Could not find sheet \"{}\" in {:?}",
-//                 sheet_name, file_path
-//             )))
-//         }
-//     };
-//     let mut rows = sheet.rows();
-//     let header = match rows.next() {
-//         Some(row) => row,
-//         None => {
-//             return Err(BulkDataError::Generic(format!(
-//                 "Could not find a header row for excel file {:?}",
-//                 file_path
-//             )))
-//         }
-//     };
-//     let header_size = header.len();
-//     for (row_num, row) in rows.enumerate() {
-//         let row_data = row
-//             .iter()
-//             .map(|value| map_excel_value(value))
-//             .collect::<Result<Vec<String>, _>>()?;
-//         if row_data.len() != header_size {
-//             return Err(BulkDataError::Generic(format!(
-//                 "Excel row {} has {} values but expected {}",
-//                 row_num + 1,
-//                 row_data.len(),
-//                 header_size
-//             )));
-//         }
-//         copy_csv_values(copy, row_data).await?;
-//     }
-//     Ok(())
-// }
 
 #[cfg(test)]
 mod tests {
