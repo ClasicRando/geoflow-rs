@@ -47,15 +47,33 @@ pub struct ColumnMetadata {
     column_type: ColumnType,
 }
 
+impl ColumnMetadata {
+    pub fn new(name: &str, column_type: ColumnType) -> Self {
+        Self {
+            name: name.to_owned(),
+            column_type,
+        }
+    }
+}
+
 pub struct Schema {
     table_name: String,
     columns: Vec<ColumnMetadata>,
 }
 
+impl Schema {
+    pub fn new(table_name: &str, columns: Vec<ColumnMetadata>) -> Self {
+        Self {
+            table_name: table_name.to_owned(),
+            columns,
+        }
+    }
+}
+
 pub trait SchemaParser {
     type Options: DataFileOptions;
 
-    fn new(options: Self::Options) -> BulkDataResult<Self>
+    fn new(options: Self::Options) -> Self
     where
         Self: Sized;
     fn schema(&self) -> BulkDataResult<Schema>;
