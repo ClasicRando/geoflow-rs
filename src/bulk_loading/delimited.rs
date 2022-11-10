@@ -6,12 +6,12 @@ use super::{
 };
 use std::{
     fs::File,
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Lines},
     path::PathBuf,
 };
 use tokio::{
     fs::File as TkFile,
-    io::{AsyncBufReadExt, BufReader as TkBufReader},
+    io::{AsyncBufReadExt, BufReader as TkBufReader, Lines as TkLines},
     sync::mpsc::{error::SendError, Sender},
 };
 
@@ -28,6 +28,18 @@ impl DelimitedDataOptions {
             delimiter,
             qualified,
         }
+    }
+
+    fn lines(&self) -> BulkDataResult<Lines<BufReader<File>>> {
+        let file = File::open(&self.file_path)?;
+        let buf_reader = BufReader::new(file);
+        Ok(buf_reader.lines())
+    }
+
+    async fn async_lines(&self) -> BulkDataResult<TkLines<TkBufReader<TkFile>>> {
+        let file = TkFile::open(&self.file_path).await?;
+        let reader = TkBufReader::new(file);
+        Ok(reader.lines())
     }
 }
 
@@ -64,9 +76,7 @@ impl SchemaParser for DelimitedSchemaParser {
         let Some(table_name) = self.0.file_path.file_name().and_then(|f| f.to_str()) else {
             return Err(format!("Could not get filename for \"{:?}\"", &self.0.file_path).into())
         };
-        let file = File::open(&self.0.file_path)?;
-        let buf_reader = BufReader::new(file);
-        let Some(Ok(header_line)) = buf_reader.lines().next() else {
+        let Some(Ok(header_line)) = self.0.lines()?.next() else {
             return Err(format!("Could not get first line of \"{:?}\"", &self.0.file_path).into())
         };
         let columns: Vec<ColumnMetadata> = header_line
@@ -78,38 +88,34 @@ impl SchemaParser for DelimitedSchemaParser {
     }
 }
 
-pub struct DelimitedDataParser {
-    options: DelimitedDataOptions,
+pub struct DelimitedDataParser(DelimitedDataOptions);
+
+impl DelimitedDataParser {
+    pub fn new(options: DelimitedDataOptions) -> Self {
+        Self(options)
+    }
 }
 
 #[async_trait::async_trait]
 impl DataParser for DelimitedDataParser {
     type Options = DelimitedDataOptions;
 
-    fn new(options: Self::Options) -> BulkDataResult<Self>
-    where
-        Self: Sized,
-    {
-        Ok(Self { options })
-    }
-
     fn options(&self) -> &Self::Options {
-        &self.options
+        &self.0
     }
 
     async fn spool_records(
         self,
         record_channel: &mut Sender<BulkDataResult<String>>,
     ) -> Option<SendError<BulkDataResult<String>>> {
-        let file_path = self.options.file_path;
-        let Ok(file) = TkFile::open(&file_path).await else {
+        let options = self.0;
+        let file_path = &options.file_path;
+        let Ok(mut lines) = options.async_lines().await else {
             return record_channel
-                .send(Err(format!("Could not open delimited data file, {:?}", &file_path).into()))
+                .send(Err(format!("Could not open delimited data file, {:?}", file_path).into()))
                 .await
                 .err();
         };
-        let reader = TkBufReader::new(file);
-        let mut lines = reader.lines();
         let mut line_number = 1;
         loop {
             let Ok(line_option) = lines.next_line().await else {

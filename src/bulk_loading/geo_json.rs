@@ -1,6 +1,6 @@
 use geo_types::Geometry;
 use geojson::{FeatureReader, JsonValue};
-use std::{fs::File, io::BufReader};
+use std::{fs::File, io::BufReader, path::PathBuf};
 use tokio::sync::mpsc::{error::SendError, Sender};
 use wkt::ToWkt;
 
@@ -8,7 +8,7 @@ use super::{
     analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
     load::{csv_values_to_string, DataParser},
-    options::DefaultFileOptions,
+    options::DataFileOptions,
 };
 
 fn column_type_from_value(value: &JsonValue) -> Option<ColumnType> {
@@ -22,12 +22,30 @@ fn column_type_from_value(value: &JsonValue) -> Option<ColumnType> {
     }
 }
 
-pub struct GeoJsonSchemaParser(DefaultFileOptions);
+pub struct GeoJsonOptions {
+    file_path: PathBuf,
+}
+
+impl GeoJsonOptions {
+    pub fn new(file_path: PathBuf) -> Self {
+        Self { file_path }
+    }
+
+    fn reader(&self) -> BulkDataResult<FeatureReader<BufReader<File>>> {
+        let file = File::open(&self.file_path)?;
+        let buff_reader = BufReader::new(file);
+        Ok(FeatureReader::from_reader(buff_reader))
+    }
+}
+
+impl DataFileOptions for GeoJsonOptions {}
+
+pub struct GeoJsonSchemaParser(GeoJsonOptions);
 
 impl SchemaParser for GeoJsonSchemaParser {
-    type Options = DefaultFileOptions;
+    type Options = GeoJsonOptions;
 
-    fn new(options: Self::Options) -> Self
+    fn new(options: GeoJsonOptions) -> Self
     where
         Self: Sized,
     {
@@ -38,9 +56,7 @@ impl SchemaParser for GeoJsonSchemaParser {
         let Some(table_name) = self.0.file_path.file_name().and_then(|f| f.to_str()) else {
             return Err(format!("Could not get filename for \"{:?}\"", &self.0.file_path).into())
         };
-        let file = File::open(&self.0.file_path)?;
-        let buff_reader = BufReader::new(file);
-        let feature_reader = FeatureReader::from_reader(buff_reader);
+        let feature_reader = self.0.reader()?;
         let mut undefined_type = false;
         let mut columns: Vec<(String, usize, Option<ColumnType>)> = Vec::new();
         for feature in feature_reader.features() {
@@ -84,34 +100,34 @@ fn map_json_value(value: &JsonValue) -> String {
     }
 }
 
-pub struct GeoJsonParser {
-    options: DefaultFileOptions,
-    reader: FeatureReader<BufReader<File>>,
+pub struct GeoJsonParser(GeoJsonOptions);
+
+impl GeoJsonParser {
+    pub fn new(options: GeoJsonOptions) -> Self {
+        Self(options)
+    }
 }
 
 #[async_trait::async_trait]
 impl DataParser for GeoJsonParser {
-    type Options = DefaultFileOptions;
-
-    fn new(options: Self::Options) -> BulkDataResult<Self> {
-        let file = File::open(&options.file_path)?;
-        let buff_reader = BufReader::new(file);
-        let feature_reader = FeatureReader::from_reader(buff_reader);
-        Ok(Self {
-            options,
-            reader: feature_reader,
-        })
-    }
+    type Options = GeoJsonOptions;
 
     fn options(&self) -> &Self::Options {
-        &self.options
+        &self.0
     }
 
     async fn spool_records(
-        mut self,
+        self,
         record_channel: &mut Sender<BulkDataResult<String>>,
     ) -> Option<SendError<BulkDataResult<String>>> {
-        for (i, feature) in self.reader.features().enumerate() {
+        let options = self.0;
+        let Ok(reader) = options.reader() else {
+            return record_channel
+                .send(Err("Could not obtain reader {}".into()))
+                .await
+                .err();
+        };
+        for (i, feature) in reader.features().enumerate() {
             let Ok(feature) = feature else {
                 return record_channel
                     .send(Err(format!("Could not obtain feature {}", &i).into()))

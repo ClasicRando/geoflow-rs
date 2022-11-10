@@ -21,6 +21,21 @@ impl ExcelOptions {
             sheet_name,
         }
     }
+
+    fn sheet(&self) -> BulkDataResult<Range<DataType>> {
+        let mut workbook = open_workbook_auto(&self.file_path)?;
+        let sheet = match workbook.worksheet_range(&self.sheet_name) {
+            Some(Ok(sheet)) => sheet,
+            _ => {
+                return Err(format!(
+                    "Could not find sheet \"{}\" in {:?}",
+                    &self.sheet_name, &self.file_path
+                )
+                .into())
+            }
+        };
+        Ok(sheet)
+    }
 }
 
 impl DataFileOptions for ExcelOptions {}
@@ -41,17 +56,7 @@ impl SchemaParser for ExcelSchemaParser {
         let Some(table_name) = self.0.file_path.file_name().and_then(|f| f.to_str()) else {
             return Err(format!("Could not get filename for \"{:?}\"", &self.0.file_path).into())
         };
-        let mut workbook = open_workbook_auto(&self.0.file_path)?;
-        let sheet = match workbook.worksheet_range(&self.0.sheet_name) {
-            Some(Ok(sheet)) => sheet,
-            _ => {
-                return Err(format!(
-                    "Could not find sheet \"{}\" in {:?}",
-                    &self.0.sheet_name, &self.0.file_path
-                )
-                .into())
-            }
-        };
+        let sheet = self.0.sheet()?;
         let Some(header_row) = sheet.rows().next() else {
             return Err(format!(
                 "Could not find header row in \"{}\" of {:?}",
@@ -89,50 +94,40 @@ pub fn map_excel_value(value: &DataType) -> BulkDataResult<String> {
     })
 }
 
-pub struct ExcelDataParser {
-    options: ExcelOptions,
-    sheet: Range<DataType>,
+pub struct ExcelDataParser(ExcelOptions);
+
+impl ExcelDataParser {
+    pub fn new(options: ExcelOptions) -> Self {
+        Self(options)
+    }
 }
 
 #[async_trait::async_trait]
 impl DataParser for ExcelDataParser {
     type Options = ExcelOptions;
 
-    fn new(options: Self::Options) -> BulkDataResult<Self> {
-        let (file_path, sheet_name) = (&options.file_path, &options.sheet_name);
-        let mut workbook = open_workbook_auto(file_path)?;
-        let sheet = match workbook.worksheet_range(sheet_name) {
-            Some(Ok(sheet)) => sheet,
-            _ => {
-                return Err(BulkDataError::Generic(format!(
-                    "Could not find sheet \"{}\" in {:?}",
-                    sheet_name, file_path
-                )))
-            }
-        };
-        Ok(Self {
-            options: options,
-            sheet: sheet,
-        })
-    }
-
     fn options(&self) -> &Self::Options {
-        &self.options
+        &self.0
     }
 
     async fn spool_records(
         self,
         record_channel: &mut Sender<BulkDataResult<String>>,
     ) -> Option<SendError<BulkDataResult<String>>> {
-        let mut rows = self.sheet.rows();
+        let sheet = match self.0.sheet() {
+            Ok(sheet) => sheet,
+            Err(error) => return record_channel.send(Err(error)).await.err(),
+        };
+        let mut rows = sheet.rows();
         let header = match rows.next() {
             Some(row) => row,
             None => {
                 return record_channel
-                    .send(Err(BulkDataError::Generic(format!(
+                    .send(Err(format!(
                         "Could not find a header row for excel file {:?}",
-                        self.options.file_path,
-                    ))))
+                        self.0.file_path,
+                    )
+                    .into()))
                     .await
                     .err();
             }

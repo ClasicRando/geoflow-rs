@@ -1,7 +1,11 @@
 use super::{
     delimited::{DelimitedDataOptions, DelimitedSchemaParser},
     error::BulkDataResult,
+    excel::{ExcelOptions, ExcelSchemaParser},
+    geo_json::{GeoJsonOptions, GeoJsonSchemaParser},
+    ipc::{IpcFileOptions, IpcSchemaParser},
     options::DataFileOptions,
+    parquet::{ParquetFileOptions, ParquetSchemaParser}, shape::{ShapeDataSchemaParser, ShapeDataOptions},
 };
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -32,7 +36,7 @@ pub enum ColumnType {
     Integer,
     BigInt,
     Number,
-    Float,
+    Real,
     DoublePrecision,
     Money,
     Timestamp,
@@ -53,7 +57,7 @@ impl ColumnType {
             ColumnType::Integer => "integer",
             ColumnType::BigInt => "bigint",
             ColumnType::Number => "numeric",
-            ColumnType::Float => "float",
+            ColumnType::Real => "real",
             ColumnType::DoublePrecision => "double precision",
             ColumnType::Money => "money",
             ColumnType::Timestamp => "timestamp without time zone",
@@ -130,6 +134,36 @@ pub struct SchemaAnalyzer<P: SchemaParser>(P);
 impl SchemaAnalyzer<DelimitedSchemaParser> {
     pub fn new(options: DelimitedDataOptions) -> Self {
         Self(DelimitedSchemaParser::new(options))
+    }
+}
+
+impl SchemaAnalyzer<ExcelSchemaParser> {
+    pub fn new(options: ExcelOptions) -> Self {
+        Self(ExcelSchemaParser::new(options))
+    }
+}
+
+impl SchemaAnalyzer<GeoJsonSchemaParser> {
+    pub fn new(options: GeoJsonOptions) -> Self {
+        Self(GeoJsonSchemaParser::new(options))
+    }
+}
+
+impl SchemaAnalyzer<ShapeDataSchemaParser> {
+    pub fn new(options: ShapeDataOptions) -> Self {
+        Self(ShapeDataSchemaParser::new(options))
+    }
+}
+
+impl SchemaAnalyzer<ParquetSchemaParser> {
+    pub fn new(options: ParquetFileOptions) -> Self {
+        Self(ParquetSchemaParser::new(options))
+    }
+}
+
+impl SchemaAnalyzer<IpcSchemaParser> {
+    pub fn new(options: IpcFileOptions) -> Self {
+        Self(IpcSchemaParser::new(options))
     }
 }
 

@@ -1,10 +1,10 @@
-use polars::prelude::{AnyValue, DataFrame, TimeUnit};
+use polars::prelude::{AnyValue, DataFrame, DataType, TimeUnit};
 use tokio::sync::mpsc::{error::SendError, Sender};
 
 use super::{
+    analyze::{ColumnMetadata, ColumnType, Schema},
     error::BulkDataResult,
-    load::{csv_values_to_string, DataParser},
-    options::DefaultFileOptions,
+    load::csv_values_to_string,
 };
 
 pub fn escape_csv_string(csv_string: String) -> String {
@@ -32,66 +32,73 @@ pub fn map_formatted_value(value: AnyValue) -> String {
     }
 }
 
-pub struct DataFrameParser {
-    options: DefaultFileOptions,
-    dataframe: DataFrame,
-}
-
-impl DataFrameParser {
-    pub fn set_dataframe(&mut self, dataframe: DataFrame) {
-        self.dataframe = dataframe;
-    }
-}
-
-#[async_trait::async_trait]
-impl DataParser for DataFrameParser {
-    type Options = DefaultFileOptions;
-
-    fn new(options: Self::Options) -> BulkDataResult<Self>
-    where
-        Self: Sized,
-    {
-        Ok(Self {
-            options,
-            dataframe: DataFrame::empty(),
-        })
-    }
-
-    fn options(&self) -> &Self::Options {
-        &self.options
-    }
-
-    async fn spool_records(
-        self,
-        record_channel: &mut Sender<BulkDataResult<String>>,
-    ) -> Option<SendError<BulkDataResult<String>>> {
-        let mut iters = self.dataframe.iter().map(|s| s.iter()).collect::<Vec<_>>();
-        for i in 0..self.dataframe.height() {
-            let row_data = iters
-                .iter_mut()
-                .map(|iter| {
-                    iter.next()
-                        .ok_or(
-                            "Dataframe value was not found. This should never happen".to_string(),
-                        )
-                        .map(|value| map_formatted_value(value))
-                })
-                .collect::<Result<Vec<String>, _>>();
-            let Ok(csv_data) = row_data else {
-                return record_channel
-                    .send(Err(format!("Could not read record {}", (i + 1)).into()))
-                    .await
-                    .err();
-            };
-            let result = record_channel
-                .send(Ok(csv_values_to_string(csv_data)))
-                .await;
-            if let Err(error) = result {
-                return Some(error);
-            }
+impl From<&DataType> for ColumnType {
+    fn from(typ: &DataType) -> Self {
+        match typ {
+            DataType::Boolean => ColumnType::Boolean,
+            DataType::UInt8 => ColumnType::SmallInt,
+            DataType::UInt16 => ColumnType::Integer,
+            DataType::UInt32 => ColumnType::BigInt,
+            DataType::UInt64 => ColumnType::BigInt,
+            DataType::Int8 => ColumnType::SmallInt,
+            DataType::Int16 => ColumnType::Integer,
+            DataType::Int32 => ColumnType::BigInt,
+            DataType::Int64 => ColumnType::BigInt,
+            DataType::Float32 => ColumnType::Real,
+            DataType::Float64 => ColumnType::DoublePrecision,
+            DataType::Utf8 => ColumnType::Text,
+            DataType::Date => ColumnType::Date,
+            DataType::Datetime(_, None) => ColumnType::TimestampWithZone,
+            DataType::Datetime(_, Some(_)) => ColumnType::Timestamp,
+            DataType::Duration(_) => ColumnType::Interval,
+            DataType::Time => ColumnType::Time,
+            DataType::List(_) => ColumnType::Text,
+            DataType::Null => ColumnType::Text,
+            DataType::Categorical(_) => ColumnType::Text,
+            DataType::Struct(_) => ColumnType::Text,
+            DataType::Unknown => ColumnType::Text,
         }
-        None
     }
+}
+
+pub fn schema_from_dataframe(file_name: String, dataframe: DataFrame) -> BulkDataResult<Schema> {
+    let columns: Vec<ColumnMetadata> = dataframe
+        .schema()
+        .iter()
+        .enumerate()
+        .map(|(i, (field, typ))| ColumnMetadata::new(field.to_owned(), i, typ.into()))
+        .collect::<BulkDataResult<_>>()?;
+    Ok(Schema::new(&file_name, columns)?)
+}
+
+pub async fn spool_dataframe_records(
+    dataframe: DataFrame,
+    record_channel: &mut Sender<BulkDataResult<String>>,
+) -> Option<SendError<BulkDataResult<String>>> {
+    let mut iters = dataframe.iter().map(|s| s.iter()).collect::<Vec<_>>();
+    for i in 0..dataframe.height() {
+        let row_data = iters
+            .iter_mut()
+            .map(|iter| {
+                iter.next()
+                    .ok_or("Dataframe value was not found. This should never happen".to_string())
+                    .map(|value| map_formatted_value(value))
+            })
+            .collect::<Result<Vec<String>, _>>();
+        let Ok(csv_data) = row_data else {
+            return record_channel
+                .send(Err(format!("Could not read record {}", (i + 1)).into()))
+                .await
+                .err();
+        };
+        let result = record_channel
+            .send(Ok(csv_values_to_string(csv_data)))
+            .await;
+        if let Err(error) = result {
+            return Some(error);
+        }
+    }
+    None
 }
 
 #[cfg(test)]

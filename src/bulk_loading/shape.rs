@@ -1,13 +1,77 @@
-use shapefile::{dbase::FieldValue, Shape, Reader};
-use std::{fs::File, io::BufReader};
+use shapefile::{dbase::FieldValue, Reader, Shape};
+use std::{fs::File, io::BufReader, path::PathBuf};
 use tokio::sync::mpsc::{error::SendError, Sender};
 use wkt::ToWkt;
 
 use super::{
     error::BulkDataResult,
     load::{csv_iter_to_string, DataParser},
-    options::DefaultFileOptions,
+    options::DataFileOptions, analyze::{SchemaParser, Schema, ColumnType, ColumnMetadata},
 };
+
+pub struct ShapeDataOptions {
+    file_path: PathBuf,
+}
+
+impl ShapeDataOptions {
+    pub fn new(file_path: PathBuf) -> Self {
+        Self { file_path }
+    }
+
+    fn reader(&self) -> BulkDataResult<Reader<BufReader<File>>> {
+        let reader = Reader::from_path(&self.file_path)?;
+        Ok(reader)
+    }
+}
+
+impl DataFileOptions for ShapeDataOptions {}
+
+fn column_type_from_value(value: FieldValue) -> ColumnType {
+    match value {
+        FieldValue::Character(_) => ColumnType::Text,
+        FieldValue::Numeric(_) => ColumnType::Number,
+        FieldValue::Logical(_) => ColumnType::Boolean,
+        FieldValue::Date(_) => ColumnType::Date,
+        FieldValue::Float(_) => ColumnType::Real,
+        FieldValue::Integer(_) => ColumnType::Integer,
+        FieldValue::Currency(_) => ColumnType::Money,
+        FieldValue::DateTime(_) => ColumnType::Timestamp,
+        FieldValue::Double(_) => ColumnType::DoublePrecision,
+        FieldValue::Memo(_) => ColumnType::Text,
+    }
+}
+
+pub struct ShapeDataSchemaParser(ShapeDataOptions);
+
+impl SchemaParser for ShapeDataSchemaParser {
+    type Options = ShapeDataOptions;
+
+    fn new(options: ShapeDataOptions) -> Self
+    where
+        Self: Sized,
+    {
+        Self(options)
+    }
+
+    fn schema(&self) -> BulkDataResult<Schema> {
+        let Some(table_name) = self.0.file_path.file_name().and_then(|f| f.to_str()) else {
+            return Err(format!("Could not get filename for \"{:?}\"", &self.0.file_path).into())
+        };
+        let mut feature_reader = self.0.reader()?;
+        let Some(Ok((_, record))) = feature_reader.iter_shapes_and_records().next() else {
+            return Err(format!("Could not get the first feature for \"{:?}\"", &self.0.file_path).into())
+        };
+        let mut columns: Vec<ColumnMetadata> = record
+            .into_iter()
+            .enumerate()
+            .map(|(index, (field, value))| {
+                ColumnMetadata::new(field, index, column_type_from_value(value))
+            })
+            .collect::<BulkDataResult<_>>()?;
+        columns.push(ColumnMetadata::new("geometry".to_owned(), columns.len(), ColumnType::Geometry)?);
+        Schema::new(table_name, columns)
+    }
+}
 
 fn map_field_value(value: FieldValue) -> String {
     match value {
@@ -38,32 +102,32 @@ fn map_field_value(value: FieldValue) -> String {
     }
 }
 
-pub struct ShapeDataParser {
-    options: DefaultFileOptions,
-    reader: Reader<BufReader<File>>,
+pub struct ShapeDataParser(ShapeDataOptions);
+
+impl ShapeDataParser {
+    pub fn new(options: ShapeDataOptions) -> Self {
+        Self(options)
+    }
 }
 
 #[async_trait::async_trait]
 impl DataParser for ShapeDataParser {
-    type Options = DefaultFileOptions;
-
-    fn new(options: Self::Options) -> BulkDataResult<Self>
-    where
-        Self: Sized,
-    {
-        let reader = Reader::from_path(&options.file_path)?;
-        Ok(ShapeDataParser { options, reader })
-    }
+    type Options = ShapeDataOptions;
 
     fn options(&self) -> &Self::Options {
-        &self.options
+        &self.0
     }
 
     async fn spool_records(
         mut self,
         record_channel: &mut Sender<BulkDataResult<String>>,
     ) -> Option<SendError<BulkDataResult<String>>> {
-        for (feature_number, feature) in self.reader.iter_shapes_and_records().enumerate() {
+        let options = self.0;
+        let mut reader = match options.reader() {
+            Ok(reader) => reader,
+            Err(error) => return record_channel.send(Err(error)).await.err(),
+        };
+        for (feature_number, feature) in reader.iter_shapes_and_records().enumerate() {
             let Ok((shape, record)) = feature else {
                 return record_channel
                     .send(Err(format!("Could not obtain feature {}", &feature_number).into()))
@@ -97,8 +161,8 @@ impl DataParser for ShapeDataParser {
 
 #[cfg(test)]
 mod tests {
-    use shapefile::dbase::{DateTime, Date, Time};
     use super::*;
+    use shapefile::dbase::{Date, DateTime, Time};
 
     #[test]
     fn map_field_value_should_return_exact_string_when_character_some() {

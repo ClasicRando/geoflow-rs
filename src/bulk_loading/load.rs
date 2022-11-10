@@ -7,12 +7,12 @@ use super::{
     delimited::{DelimitedDataOptions, DelimitedDataParser},
     error::{BulkDataError, BulkDataResult},
     excel::{ExcelDataParser, ExcelOptions},
-    geo_json::GeoJsonParser,
-    ipc::ipc_data_to_df,
-    options::{DataFileOptions, DefaultFileOptions},
-    parquet::parquet_data_to_df,
-    shape::ShapeDataParser,
-    utilities::{escape_csv_string, DataFrameParser},
+    geo_json::{GeoJsonOptions, GeoJsonParser},
+    ipc::{IpcFileOptions, IpcFileParser},
+    options::DataFileOptions,
+    parquet::{ParquetFileOptions, ParquetFileParser},
+    shape::{ShapeDataOptions, ShapeDataParser},
+    utilities::escape_csv_string,
 };
 
 pub type BulkLoadResult = Result<u64, BulkDataError>;
@@ -65,9 +65,6 @@ pub fn csv_values_to_string<I: IntoIterator<Item = String>>(csv_values: I) -> St
 pub trait DataParser {
     type Options: DataFileOptions;
 
-    fn new(options: Self::Options) -> BulkDataResult<Self>
-    where
-        Self: Sized;
     fn options(&self) -> &Self::Options;
     async fn spool_records(
         self,
@@ -84,46 +81,42 @@ impl DataLoader<DelimitedDataParser> {
         qualified: bool,
     ) -> BulkDataResult<Self> {
         let options = DelimitedDataOptions::new(file_path, delimiter, qualified);
-        Ok(Self::new(DelimitedDataParser::new(options)?))
+        Ok(Self::new(DelimitedDataParser::new(options)))
     }
 }
 
 impl DataLoader<ExcelDataParser> {
-    pub fn from_excel(file_path: PathBuf, sheet_name: String) -> BulkDataResult<Self> {
+    pub fn from_excel(file_path: PathBuf, sheet_name: String) -> Self {
         let options = ExcelOptions::new(file_path, sheet_name);
-        Ok(Self::new(ExcelDataParser::new(options)?))
+        Self::new(ExcelDataParser::new(options))
     }
 }
 
 impl DataLoader<ShapeDataParser> {
-    pub fn from_shape(file_path: PathBuf) -> BulkDataResult<Self> {
-        let options = DefaultFileOptions::new(file_path);
-        Ok(Self::new(ShapeDataParser::new(options)?))
+    pub fn from_shape(file_path: PathBuf) -> Self {
+        let options = ShapeDataOptions::new(file_path);
+        Self::new(ShapeDataParser::new(options))
     }
 }
 
 impl DataLoader<GeoJsonParser> {
-    pub fn from_geo_json(file_path: PathBuf) -> BulkDataResult<Self> {
-        let options = DefaultFileOptions::new(file_path);
-        Ok(Self::new(GeoJsonParser::new(options)?))
+    pub fn from_geo_json(file_path: PathBuf) -> Self {
+        let options = GeoJsonOptions::new(file_path);
+        Self::new(GeoJsonParser::new(options))
     }
 }
 
-impl DataLoader<DataFrameParser> {
-    pub fn from_parquet(file_path: PathBuf) -> BulkDataResult<Self> {
-        let dataframe = parquet_data_to_df(&file_path)?;
-        let options = DefaultFileOptions::new(file_path);
-        let mut parser = DataFrameParser::new(options)?;
-        parser.set_dataframe(dataframe);
-        Ok(Self::new(parser))
+impl DataLoader<ParquetFileParser> {
+    pub fn from_geo_json(file_path: PathBuf) -> Self {
+        let options = ParquetFileOptions::new(file_path);
+        Self::new(ParquetFileParser::new(options))
     }
+}
 
-    pub fn from_ipc(file_path: PathBuf) -> BulkDataResult<Self> {
-        let dataframe = ipc_data_to_df(&file_path)?;
-        let options = DefaultFileOptions::new(file_path);
-        let mut parser = DataFrameParser::new(options)?;
-        parser.set_dataframe(dataframe);
-        Ok(Self::new(parser))
+impl DataLoader<IpcFileParser> {
+    pub fn from_geo_json(file_path: PathBuf) -> Self {
+        let options = IpcFileOptions::new(file_path);
+        Self::new(IpcFileParser::new(options))
     }
 }
 
