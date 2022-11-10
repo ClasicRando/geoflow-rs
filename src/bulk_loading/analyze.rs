@@ -132,37 +132,37 @@ pub trait SchemaParser {
 pub struct SchemaAnalyzer<P: SchemaParser>(P);
 
 impl SchemaAnalyzer<DelimitedSchemaParser> {
-    pub fn new(options: DelimitedDataOptions) -> Self {
+    pub fn from_delimited(options: DelimitedDataOptions) -> Self {
         Self(DelimitedSchemaParser::new(options))
     }
 }
 
 impl SchemaAnalyzer<ExcelSchemaParser> {
-    pub fn new(options: ExcelOptions) -> Self {
+    pub fn from_excel(options: ExcelOptions) -> Self {
         Self(ExcelSchemaParser::new(options))
     }
 }
 
 impl SchemaAnalyzer<GeoJsonSchemaParser> {
-    pub fn new(options: GeoJsonOptions) -> Self {
+    pub fn from_geo_json(options: GeoJsonOptions) -> Self {
         Self(GeoJsonSchemaParser::new(options))
     }
 }
 
 impl SchemaAnalyzer<ShapeDataSchemaParser> {
-    pub fn new(options: ShapeDataOptions) -> Self {
+    pub fn from_shapefile(options: ShapeDataOptions) -> Self {
         Self(ShapeDataSchemaParser::new(options))
     }
 }
 
 impl SchemaAnalyzer<ParquetSchemaParser> {
-    pub fn new(options: ParquetFileOptions) -> Self {
+    pub fn from_parquet(options: ParquetFileOptions) -> Self {
         Self(ParquetSchemaParser::new(options))
     }
 }
 
 impl SchemaAnalyzer<IpcSchemaParser> {
-    pub fn new(options: IpcFileOptions) -> Self {
+    pub fn from_ipc(options: IpcFileOptions) -> Self {
         Self(IpcSchemaParser::new(options))
     }
 }

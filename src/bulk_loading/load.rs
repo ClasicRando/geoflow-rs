@@ -1,6 +1,5 @@
 use itertools::Itertools;
 use sqlx::PgPool;
-use std::path::PathBuf;
 use tokio::sync::mpsc::{channel as mpsc_channel, error::SendError, Sender};
 
 use super::{
@@ -75,55 +74,42 @@ pub trait DataParser {
 pub struct DataLoader<P: DataParser + Send + Sync + 'static>(P);
 
 impl DataLoader<DelimitedDataParser> {
-    pub fn from_delimited(
-        file_path: PathBuf,
-        delimiter: char,
-        qualified: bool,
-    ) -> BulkDataResult<Self> {
-        let options = DelimitedDataOptions::new(file_path, delimiter, qualified);
-        Ok(Self::new(DelimitedDataParser::new(options)))
+    pub fn from_delimited(options: DelimitedDataOptions) -> Self {
+        Self(DelimitedDataParser::new(options))
     }
 }
 
 impl DataLoader<ExcelDataParser> {
-    pub fn from_excel(file_path: PathBuf, sheet_name: String) -> Self {
-        let options = ExcelOptions::new(file_path, sheet_name);
-        Self::new(ExcelDataParser::new(options))
+    pub fn from_excel(options: ExcelOptions) -> Self {
+        Self(ExcelDataParser::new(options))
     }
 }
 
 impl DataLoader<ShapeDataParser> {
-    pub fn from_shape(file_path: PathBuf) -> Self {
-        let options = ShapeDataOptions::new(file_path);
-        Self::new(ShapeDataParser::new(options))
+    pub fn from_shapefile(options: ShapeDataOptions) -> Self {
+        Self(ShapeDataParser::new(options))
     }
 }
 
 impl DataLoader<GeoJsonParser> {
-    pub fn from_geo_json(file_path: PathBuf) -> Self {
-        let options = GeoJsonOptions::new(file_path);
-        Self::new(GeoJsonParser::new(options))
+    pub fn from_geo_json(options: GeoJsonOptions) -> Self {
+        Self(GeoJsonParser::new(options))
     }
 }
 
 impl DataLoader<ParquetFileParser> {
-    pub fn from_geo_json(file_path: PathBuf) -> Self {
-        let options = ParquetFileOptions::new(file_path);
-        Self::new(ParquetFileParser::new(options))
+    pub fn from_parquet(options: ParquetFileOptions) -> Self {
+        Self(ParquetFileParser::new(options))
     }
 }
 
 impl DataLoader<IpcFileParser> {
-    pub fn from_geo_json(file_path: PathBuf) -> Self {
-        let options = IpcFileOptions::new(file_path);
-        Self::new(IpcFileParser::new(options))
+    pub fn from_ipc(options: IpcFileOptions) -> Self {
+        Self(IpcFileParser::new(options))
     }
 }
 
 impl<P: DataParser + Send + Sync + 'static> DataLoader<P> {
-    fn new(parser: P) -> Self {
-        Self(parser)
-    }
 
     pub async fn load_data(self, copy_options: CopyOptions, pool: PgPool) -> BulkLoadResult {
         let copy_statement = copy_options.copy_statement(self.0.options());
