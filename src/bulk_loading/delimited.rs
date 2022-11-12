@@ -15,6 +15,7 @@ use tokio::{
     sync::mpsc::{error::SendError, Sender},
 };
 
+#[derive(Clone)]
 pub struct DelimitedDataOptions {
     file_path: PathBuf,
     delimiter: char,
@@ -82,7 +83,7 @@ impl SchemaParser for DelimitedSchemaParser {
         let columns: Vec<ColumnMetadata> = header_line
             .split(self.0.delimiter)
             .enumerate()
-            .map(|(i, field)| ColumnMetadata::new(field.to_owned(), i, ColumnType::Text))
+            .map(|(i, field)| ColumnMetadata::new(field.trim_matches('"'), i, ColumnType::Text))
             .collect::<BulkDataResult<_>>()?;
         Schema::new(table_name, columns)
     }
