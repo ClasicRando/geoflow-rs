@@ -22,10 +22,17 @@ pub struct CopyOptions {
 }
 
 impl CopyOptions {
-    pub fn new(table_name: &str, columns: &Vec<&str>) -> Self {
+    pub fn new(table_name: &str, columns: &[&str]) -> Self {
         Self {
             table_name: table_name.to_owned(),
             columns: columns.iter().map(|s| s.to_string()).collect_vec(),
+        }
+    }
+
+    pub fn from_vec(table_name: String, columns: Vec<String>) -> Self {
+        Self {
+            table_name: table_name,
+            columns,
         }
     }
 
