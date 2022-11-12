@@ -9,6 +9,7 @@ use super::{
     options::DataFileOptions,
 };
 
+#[derive(Clone)]
 pub struct ExcelOptions {
     file_path: PathBuf,
     sheet_name: String,
