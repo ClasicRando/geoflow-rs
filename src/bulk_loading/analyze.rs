@@ -4,10 +4,12 @@ use super::{
     excel::{ExcelOptions, ExcelSchemaParser},
     geo_json::{GeoJsonOptions, GeoJsonSchemaParser},
     ipc::{IpcFileOptions, IpcSchemaParser},
+    load::CopyOptions,
     options::DataFileOptions,
     parquet::{ParquetFileOptions, ParquetSchemaParser},
     shape::{ShapeDataOptions, ShapeDataSchemaParser},
 };
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::{Regex, RegexBuilder};
 
@@ -140,6 +142,35 @@ impl Schema {
             table_name,
             columns,
         })
+    }
+
+    pub fn copy_options(&self, db_schema: &str) -> CopyOptions {
+        CopyOptions::from_vec(
+            format!("{}.{}", db_schema, self.table_name),
+            self.columns.iter().map(|c| c.name().to_owned()).collect(),
+        )
+    }
+
+    pub fn create_statement(&self, db_schema: &str) -> String {
+        format!(
+            "create table {}.{}({})",
+            db_schema,
+            &self.table_name,
+            self.columns
+                .iter()
+                .map(|c| format!("{} {}", &c.name, c.column_type.pg_name()))
+                .join(",")
+        )
+    }
+
+    #[inline]
+    pub fn table_name(&self) -> &str {
+        &self.table_name
+    }
+
+    #[inline]
+    pub fn columns(&self) -> &[ColumnMetadata] {
+        &self.columns
     }
 }
 
