@@ -5,10 +5,11 @@ use super::{
     geo_json::{GeoJsonOptions, GeoJsonSchemaParser},
     ipc::{IpcFileOptions, IpcSchemaParser},
     options::DataFileOptions,
-    parquet::{ParquetFileOptions, ParquetSchemaParser}, shape::{ShapeDataSchemaParser, ShapeDataOptions},
+    parquet::{ParquetFileOptions, ParquetSchemaParser},
+    shape::{ShapeDataOptions, ShapeDataSchemaParser},
 };
 use lazy_static::lazy_static;
-use regex::Regex;
+use regex::{Regex, RegexBuilder};
 
 lazy_static! {
     static ref SQL_NAME_REGEX: Regex = Regex::new("^[A-Z_][A-Z_0-9]{1,64}$").unwrap();
@@ -16,19 +17,25 @@ lazy_static! {
 
 fn clean_sql_name(name: &str) -> Option<String> {
     lazy_static! {
-        static ref SQL_NAME_CLEAN_REGEX1: Regex = Regex::new("[^A-Z_0-9]").unwrap();
-        static ref SQL_NAME_CLEAN_REGEX2: Regex = Regex::new("^([0-9])").unwrap();
-        static ref SQL_NAME_CLEAN_REGEX3: Regex = Regex::new("_{2,}").unwrap();
+        static ref SQL_NAME_CLEAN_REGEX1: Regex = Regex::new("\\..+$").unwrap();
+        static ref SQL_NAME_CLEAN_REGEX2: Regex = RegexBuilder::new("[^A-Z_0-9]")
+            .case_insensitive(true)
+            .build()
+            .unwrap();
+        static ref SQL_NAME_CLEAN_REGEX3: Regex = Regex::new("^([0-9])").unwrap();
+        static ref SQL_NAME_CLEAN_REGEX4: Regex = Regex::new("_{2,}").unwrap();
     }
-    let name = SQL_NAME_CLEAN_REGEX1.replace(name, "_");
-    let name = SQL_NAME_CLEAN_REGEX2.replace(&name, "_$1");
-    let name = SQL_NAME_CLEAN_REGEX2.replace(&name, "_");
+    let name = SQL_NAME_CLEAN_REGEX1.replace(name, "");
+    let name = SQL_NAME_CLEAN_REGEX2.replace_all(&name, "_");
+    let name = SQL_NAME_CLEAN_REGEX3.replace(&name, "_$1");
+    let name = SQL_NAME_CLEAN_REGEX4.replace_all(&name, "_");
     if name.is_empty() {
         return None;
     }
-    Some(name.to_string())
+    Some(name.to_lowercase())
 }
 
+#[derive(Debug, PartialEq)]
 pub enum ColumnType {
     Text,
     Boolean,
@@ -71,6 +78,7 @@ impl ColumnType {
     }
 }
 
+#[derive(Debug)]
 pub struct ColumnMetadata {
     name: String,
     index: usize,
@@ -78,10 +86,10 @@ pub struct ColumnMetadata {
 }
 
 impl ColumnMetadata {
-    pub fn new(name: String, index: usize, column_type: ColumnType) -> BulkDataResult<Self> {
+    pub fn new(name: &str, index: usize, column_type: ColumnType) -> BulkDataResult<Self> {
         if SQL_NAME_REGEX.is_match(&name) {
             return Ok(Self {
-                name: name.to_owned(),
+                name: name.to_lowercase(),
                 index,
                 column_type,
             });
@@ -95,6 +103,21 @@ impl ColumnMetadata {
             column_type,
         })
     }
+
+    #[inline]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    #[inline]
+    pub fn index(&self) -> &usize {
+        &self.index
+    }
+
+    #[inline]
+    pub fn column_type(&self) -> &ColumnType {
+        &self.column_type
+    }
 }
 
 pub struct Schema {
@@ -106,7 +129,7 @@ impl Schema {
     pub fn new(table_name: &str, columns: Vec<ColumnMetadata>) -> BulkDataResult<Self> {
         if SQL_NAME_REGEX.is_match(table_name) {
             return Ok(Self {
-                table_name: table_name.to_owned(),
+                table_name: table_name.to_lowercase(),
                 columns,
             });
         }

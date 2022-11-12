@@ -66,7 +66,7 @@ pub fn schema_from_dataframe(file_name: String, dataframe: DataFrame) -> BulkDat
         .schema()
         .iter()
         .enumerate()
-        .map(|(i, (field, typ))| ColumnMetadata::new(field.to_owned(), i, typ.into()))
+        .map(|(i, (field, typ))| ColumnMetadata::new(field, i, typ.into()))
         .collect::<BulkDataResult<_>>()?;
     Ok(Schema::new(&file_name, columns)?)
 }

@@ -83,7 +83,7 @@ impl SchemaParser for GeoJsonSchemaParser {
         let columns: Vec<ColumnMetadata> = columns
             .into_iter()
             .map(|(field, index, typ)| {
-                ColumnMetadata::new(field, index, typ.unwrap_or(ColumnType::Text))
+                ColumnMetadata::new(&field, index, typ.unwrap_or(ColumnType::Text))
             })
             .collect::<BulkDataResult<_>>()?;
         Schema::new(table_name, columns)

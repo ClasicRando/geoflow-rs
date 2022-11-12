@@ -65,10 +65,10 @@ impl SchemaParser for ShapeDataSchemaParser {
             .into_iter()
             .enumerate()
             .map(|(index, (field, value))| {
-                ColumnMetadata::new(field, index, column_type_from_value(value))
+                ColumnMetadata::new(&field, index, column_type_from_value(value))
             })
             .collect::<BulkDataResult<_>>()?;
-        columns.push(ColumnMetadata::new("geometry".to_owned(), columns.len(), ColumnType::Geometry)?);
+        columns.push(ColumnMetadata::new("geometry", columns.len(), ColumnType::Geometry)?);
         Schema::new(table_name, columns)
     }
 }

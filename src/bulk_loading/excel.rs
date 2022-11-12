@@ -68,7 +68,7 @@ impl SchemaParser for ExcelSchemaParser {
             .enumerate()
             .map(|(i, field)| -> BulkDataResult<ColumnMetadata> {
                 let field_value = map_excel_value(field)?;
-                ColumnMetadata::new(field_value, i, ColumnType::Text)
+                ColumnMetadata::new(&field_value, i, ColumnType::Text)
             })
             .collect::<Result<Vec<ColumnMetadata>, _>>()?;
         Schema::new(table_name, columns)
