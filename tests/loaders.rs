@@ -2,7 +2,9 @@ use geoflow_rs::{
     bulk_loading::{
         analyze::{ColumnType, SchemaAnalyzer},
         delimited::DelimitedDataOptions,
-        load::DataLoader, excel::ExcelOptions,
+        excel::ExcelOptions,
+        load::DataLoader,
+        shape::ShapeDataOptions,
     },
     database::create_db_pool,
 };
@@ -202,6 +204,104 @@ async fn excel_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 
     assert_eq!(2000_u64, records_loaded);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn shapefile_data_loading() -> Result<(), Box<dyn std::error::Error>> {
+    let db_schema = "geoflow";
+    let expected_table_name = "shape_data_test";
+    let expected_column_names = [
+        ("item_id", ColumnType::Text),
+        ("ai_id", ColumnType::Number),
+        ("int_doc_id", ColumnType::Number),
+        ("si_type", ColumnType::Text),
+        ("si_cat", ColumnType::Text),
+        ("si_id", ColumnType::Number),
+        ("si_cat_des", ColumnType::Text),
+        ("si_type_de", ColumnType::Text),
+        ("ai_name", ColumnType::Text),
+        ("ai_program", ColumnType::Text),
+        ("ai_prg_cod", ColumnType::Text),
+        ("ic_site_ty", ColumnType::Text),
+        ("ic_id", ColumnType::Text),
+        ("ic_name", ColumnType::Text),
+        ("control_ty", ColumnType::Text),
+        ("acreage", ColumnType::Real),
+        ("parcel_lis", ColumnType::Text),
+        ("bond_apprp", ColumnType::Text),
+        ("ic_recordi", ColumnType::Text),
+        ("inspection", ColumnType::Text),
+        ("ic_signed", ColumnType::Date),
+        ("ic_recorde", ColumnType::Date),
+        ("ic_termina", ColumnType::Date),
+        ("count_insp", ColumnType::Real),
+        ("last_inspe", ColumnType::Date),
+        ("comments", ColumnType::Text),
+        ("address1", ColumnType::Text),
+        ("address2", ColumnType::Text),
+        ("city_name", ColumnType::Text),
+        ("state_code", ColumnType::Text),
+        ("zip_code", ColumnType::Text),
+        ("county_nam", ColumnType::Text),
+        ("county_cod", ColumnType::Text),
+        ("ctu_code", ColumnType::Text),
+        ("ctu_name", ColumnType::Text),
+        ("cong_dist", ColumnType::Text),
+        ("house_dist", ColumnType::Text),
+        ("senate_dis", ColumnType::Text),
+        ("huc8", ColumnType::Text),
+        ("huc8_name", ColumnType::Text),
+        ("huc10", ColumnType::Text),
+        ("huc12", ColumnType::Text),
+        ("huc12_name", ColumnType::Text),
+        ("dwsma_code", ColumnType::Text),
+        ("dwsma_name", ColumnType::Text),
+        ("loc_desc", ColumnType::Text),
+        ("latitude", ColumnType::Real),
+        ("longitude", ColumnType::Real),
+        ("method_cod", ColumnType::Text),
+        ("method_des", ColumnType::Text),
+        ("ref_code", ColumnType::Text),
+        ("ref_desc", ColumnType::Text),
+        ("collection", ColumnType::Date),
+        ("tmsp_creat", ColumnType::Date),
+        ("tmsp_updt", ColumnType::Date),
+        ("geometry", ColumnType::Geometry),
+    ];
+
+    let mut path = std::env::current_dir()?;
+    path.push("tests/shape-data-test/shape_data_test.shp");
+    let options = ShapeDataOptions::new(path);
+    let analyzer = SchemaAnalyzer::from_shapefile(options.clone());
+    let schema = analyzer.schema()?;
+
+    assert_eq!(expected_table_name, schema.table_name());
+
+    let fields = schema.columns();
+    assert_eq!(expected_column_names.len(), fields.len());
+    for (ex_field, field) in expected_column_names.iter().zip(fields) {
+        assert_eq!(ex_field.0, field.name());
+        assert_eq!(&ex_field.1, field.column_type());
+    }
+
+    let pool = create_db_pool().await?;
+    sqlx::query(&format!(
+        "drop table if exists {}.{}",
+        db_schema,
+        schema.table_name()
+    ))
+    .execute(&pool)
+    .await?;
+    let create_statement = schema.create_statement(db_schema);
+    sqlx::query(&create_statement).execute(&pool).await?;
+
+    let loader = DataLoader::from_shapefile(options);
+    let copy_options = schema.copy_options(db_schema);
+    let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
+
+    assert_eq!(1244_u64, records_loaded);
 
     Ok(())
 }
