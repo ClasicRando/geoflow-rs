@@ -52,6 +52,18 @@ impl CopyOptions {
     }
 }
 
+pub fn csv_result_iter_to_string<I: Iterator<Item = BulkDataResult<String>>>(csv_iter: I) -> BulkDataResult<String> {
+    let mut csv_data = String::new();
+    for s in csv_iter {
+        let csv_value = s?;
+        csv_data.push_str(&escape_csv_string(csv_value));
+        csv_data.push(',');
+    }
+    csv_data.pop();
+    csv_data.push('\n');
+    Ok(csv_data)
+}
+
 pub fn csv_iter_to_string<I: Iterator<Item = String>>(csv_iter: I) -> String {
     let mut csv_data = csv_iter.map(|s| escape_csv_string(s)).join(",");
     csv_data.push('\n');
