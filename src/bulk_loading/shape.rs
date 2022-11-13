@@ -1,14 +1,19 @@
-use shapefile::{dbase::FieldValue, Reader, Shape};
+use shapefile::{
+    dbase::{FieldInfo, FieldValue, Reader as DbfReader},
+    Reader, Shape,
+};
 use std::{fs::File, io::BufReader, path::PathBuf};
 use tokio::sync::mpsc::{error::SendError, Sender};
 use wkt::ToWkt;
 
 use super::{
+    analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
-    load::{csv_iter_to_string, DataParser},
-    options::DataFileOptions, analyze::{SchemaParser, Schema, ColumnType, ColumnMetadata},
+    load::{csv_result_iter_to_string, DataParser},
+    options::DataFileOptions,
 };
 
+#[derive(Clone)]
 pub struct ShapeDataOptions {
     file_path: PathBuf,
 }
@@ -16,6 +21,21 @@ pub struct ShapeDataOptions {
 impl ShapeDataOptions {
     pub fn new(file_path: PathBuf) -> Self {
         Self { file_path }
+    }
+
+    fn fields(&self) -> BulkDataResult<Vec<FieldInfo>> {
+        let dbf_reader = DbfReader::from_path(self.file_path.with_extension("dbf"))?;
+        Ok(dbf_reader
+            .fields()
+            .iter()
+            .filter_map(|f| {
+                if f.name() != "DeletionFlag" {
+                    Some(f.clone())
+                } else {
+                    None
+                }
+            })
+            .collect())
     }
 
     fn reader(&self) -> BulkDataResult<Reader<BufReader<File>>> {
@@ -26,7 +46,7 @@ impl ShapeDataOptions {
 
 impl DataFileOptions for ShapeDataOptions {}
 
-fn column_type_from_value(value: FieldValue) -> ColumnType {
+fn column_type_from_value(value: &FieldValue) -> ColumnType {
     match value {
         FieldValue::Character(_) => ColumnType::Text,
         FieldValue::Numeric(_) => ColumnType::Number,
@@ -61,14 +81,25 @@ impl SchemaParser for ShapeDataSchemaParser {
         let Some(Ok((_, record))) = feature_reader.iter_shapes_and_records().next() else {
             return Err(format!("Could not get the first feature for \"{:?}\"", &self.0.file_path).into())
         };
-        let mut columns: Vec<ColumnMetadata> = record
-            .into_iter()
+        let mut columns: Vec<ColumnMetadata> = self
+            .0
+            .fields()?
+            .iter()
             .enumerate()
-            .map(|(index, (field, value))| {
-                ColumnMetadata::new(&field, index, column_type_from_value(value))
+            .filter(|(_, f)| f.name() != "DeletionFlag")
+            .map(|(index, field)| -> BulkDataResult<ColumnMetadata> {
+                let field_name = field.name();
+                let Some(field_value) = record.get(field_name) else {
+                    return Err(format!("Could not find value for field {}", field_name).into())
+                };
+                ColumnMetadata::new(field_name, index, column_type_from_value(&field_value))
             })
             .collect::<BulkDataResult<_>>()?;
-        columns.push(ColumnMetadata::new("geometry", columns.len(), ColumnType::Geometry)?);
+        columns.push(ColumnMetadata::new(
+            "geometry",
+            columns.len(),
+            ColumnType::Geometry,
+        )?);
         Schema::new(table_name, columns)
     }
 }
@@ -123,12 +154,19 @@ impl DataParser for ShapeDataParser {
         record_channel: &mut Sender<BulkDataResult<String>>,
     ) -> Option<SendError<BulkDataResult<String>>> {
         let options = self.0;
+        let fields = match options.fields() {
+            Ok(fields) => fields,
+            Err(error) => return record_channel
+                .send(Err(error))
+                .await
+                .err(),
+        };
         let mut reader = match options.reader() {
             Ok(reader) => reader,
             Err(error) => return record_channel.send(Err(error)).await.err(),
         };
         for (feature_number, feature) in reader.iter_shapes_and_records().enumerate() {
-            let Ok((shape, record)) = feature else {
+            let Ok((shape, mut record)) = feature else {
                 return record_channel
                     .send(Err(format!("Could not obtain feature {}", &feature_number).into()))
                     .await
@@ -146,11 +184,16 @@ impl DataParser for ShapeDataParser {
                     geo.wkt_string()
                 }
             };
-            let csv_iter = record
-                .into_iter()
-                .map(|(_, value)| map_field_value(value))
-                .chain(std::iter::once(wkt));
-            let result = record_channel.send(Ok(csv_iter_to_string(csv_iter))).await;
+            let csv_iter = fields
+                .iter()
+                .map(|f| -> BulkDataResult<String> {
+                    let Some(field_value) = record.remove(f.name()) else {
+                        return Err(format!("Could not find field \"{}\" in record number {}", f.name(), feature_number).into())
+                    };
+                    Ok(map_field_value(field_value))
+                })
+                .chain(std::iter::once(Ok(wkt)));
+            let result = record_channel.send(csv_result_iter_to_string(csv_iter)).await;
             if let Err(error) = result {
                 return Some(error);
             }
