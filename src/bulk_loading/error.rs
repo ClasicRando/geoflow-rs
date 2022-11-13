@@ -80,6 +80,12 @@ impl From<shapefile::Error> for BulkDataError {
     }
 }
 
+impl From<shapefile::dbase::Error> for BulkDataError {
+    fn from(error: shapefile::dbase::Error) -> Self {
+        Self::Shp(shapefile::Error::DbaseError(error))
+    }
+}
+
 impl From<geojson::Error> for BulkDataError {
     fn from(error: geojson::Error) -> Self {
         Self::GeoJSON(error)
