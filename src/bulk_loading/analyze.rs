@@ -4,7 +4,7 @@ use super::{
     excel::{ExcelOptions, ExcelSchemaParser},
     geo_json::{GeoJsonOptions, GeoJsonSchemaParser},
     ipc::{IpcFileOptions, IpcSchemaParser},
-    load::CopyOptions,
+    load::{CopyOptions, DataParser, DataLoader},
     options::DataFileOptions,
     parquet::{ParquetFileOptions, ParquetSchemaParser},
     shape::{ShapeDataOptions, ShapeDataSchemaParser},
@@ -180,11 +180,13 @@ impl Schema {
 
 pub trait SchemaParser {
     type Options: DataFileOptions;
+    type DataParser: DataParser + Send + Sync;
 
     fn new(options: Self::Options) -> Self
     where
         Self: Sized;
     fn schema(&self) -> BulkDataResult<Schema>;
+    fn data_loader(self) -> DataLoader<Self::DataParser>;
 }
 
 pub struct SchemaAnalyzer<P: SchemaParser>(P);
@@ -228,5 +230,9 @@ impl SchemaAnalyzer<IpcSchemaParser> {
 impl<P: SchemaParser> SchemaAnalyzer<P> {
     pub fn schema(&self) -> BulkDataResult<Schema> {
         self.0.schema()
+    }
+
+    pub fn loader(self) -> DataLoader<P::DataParser> {
+        self.0.data_loader()
     }
 }

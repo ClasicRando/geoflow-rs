@@ -1,7 +1,7 @@
 use super::{
     analyze::{Schema, SchemaParser},
     error::BulkDataResult,
-    load::DataParser,
+    load::{DataParser, DataLoader},
     options::DataFileOptions,
     utilities::{schema_from_dataframe, spool_dataframe_records},
 };
@@ -30,6 +30,7 @@ pub struct ParquetSchemaParser(ParquetFileOptions);
 
 impl SchemaParser for ParquetSchemaParser {
     type Options = ParquetFileOptions;
+    type DataParser = ParquetFileParser;
 
     fn new(options: ParquetFileOptions) -> Self
     where
@@ -44,6 +45,11 @@ impl SchemaParser for ParquetSchemaParser {
         };
         let df = self.0.dataframe()?;
         schema_from_dataframe(table_name.to_owned(), df)
+    }
+
+    fn data_loader(self) -> DataLoader<Self::DataParser> {
+        let options = self.0;
+        DataLoader::from_parquet(options)
     }
 }
 

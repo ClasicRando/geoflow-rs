@@ -5,11 +5,10 @@ use tokio::sync::mpsc::{error::SendError, Sender};
 use super::{
     analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
     error::{BulkDataError, BulkDataResult},
-    load::{csv_values_to_string, DataParser},
+    load::{csv_values_to_string, DataParser, DataLoader},
     options::DataFileOptions,
 };
 
-#[derive(Clone)]
 pub struct ExcelOptions {
     file_path: PathBuf,
     sheet_name: String,
@@ -45,6 +44,7 @@ pub struct ExcelSchemaParser(ExcelOptions);
 
 impl SchemaParser for ExcelSchemaParser {
     type Options = ExcelOptions;
+    type DataParser = ExcelDataParser;
 
     fn new(options: Self::Options) -> Self
     where
@@ -73,6 +73,11 @@ impl SchemaParser for ExcelSchemaParser {
             })
             .collect::<Result<Vec<ColumnMetadata>, _>>()?;
         Schema::new(table_name, columns)
+    }
+
+    fn data_loader(self) -> DataLoader<Self::DataParser> {
+        let options = self.0;
+        DataLoader::from_excel(options)
     }
 }
 

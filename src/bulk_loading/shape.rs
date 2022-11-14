@@ -9,11 +9,10 @@ use wkt::ToWkt;
 use super::{
     analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
-    load::{csv_result_iter_to_string, DataParser},
+    load::{csv_result_iter_to_string, DataParser, DataLoader},
     options::DataFileOptions,
 };
 
-#[derive(Clone)]
 pub struct ShapeDataOptions {
     file_path: PathBuf,
 }
@@ -65,6 +64,7 @@ pub struct ShapeDataSchemaParser(ShapeDataOptions);
 
 impl SchemaParser for ShapeDataSchemaParser {
     type Options = ShapeDataOptions;
+    type DataParser = ShapeDataParser;
 
     fn new(options: ShapeDataOptions) -> Self
     where
@@ -101,6 +101,11 @@ impl SchemaParser for ShapeDataSchemaParser {
             ColumnType::Geometry,
         )?);
         Schema::new(table_name, columns)
+    }
+
+    fn data_loader(self) -> DataLoader<Self::DataParser> {
+        let options = self.0;
+        DataLoader::from_shapefile(options)
     }
 }
 

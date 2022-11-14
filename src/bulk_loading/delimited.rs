@@ -1,7 +1,7 @@
 use super::{
     analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
-    load::DataParser,
+    load::{DataParser, DataLoader},
     options::DataFileOptions,
 };
 use std::{
@@ -15,7 +15,6 @@ use tokio::{
     sync::mpsc::{error::SendError, Sender},
 };
 
-#[derive(Clone)]
 pub struct DelimitedDataOptions {
     file_path: PathBuf,
     delimiter: char,
@@ -65,6 +64,7 @@ pub struct DelimitedSchemaParser(DelimitedDataOptions);
 
 impl SchemaParser for DelimitedSchemaParser {
     type Options = DelimitedDataOptions;
+    type DataParser = DelimitedDataParser;
 
     fn new(options: Self::Options) -> Self
     where
@@ -86,6 +86,11 @@ impl SchemaParser for DelimitedSchemaParser {
             .map(|(i, field)| ColumnMetadata::new(field.trim_matches('"'), i, ColumnType::Text))
             .collect::<BulkDataResult<_>>()?;
         Schema::new(table_name, columns)
+    }
+
+    fn data_loader(self) -> DataLoader<Self::DataParser> {
+        let options = self.0;
+        DataLoader::from_delimited(options)
     }
 }
 

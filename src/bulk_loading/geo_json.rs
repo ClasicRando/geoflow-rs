@@ -7,7 +7,7 @@ use wkt::ToWkt;
 use super::{
     analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
-    load::{csv_values_to_string, DataParser},
+    load::{csv_values_to_string, DataParser, DataLoader},
     options::DataFileOptions,
 };
 
@@ -21,8 +21,6 @@ fn column_type_from_value(value: &JsonValue) -> Option<ColumnType> {
         JsonValue::Object(_) => Some(ColumnType::Json),
     }
 }
-
-#[derive(Clone)]
 pub struct GeoJsonOptions {
     file_path: PathBuf,
 }
@@ -45,6 +43,7 @@ pub struct GeoJsonSchemaParser(GeoJsonOptions);
 
 impl SchemaParser for GeoJsonSchemaParser {
     type Options = GeoJsonOptions;
+    type DataParser = GeoJsonParser;
 
     fn new(options: GeoJsonOptions) -> Self
     where
@@ -91,6 +90,11 @@ impl SchemaParser for GeoJsonSchemaParser {
             ColumnType::Geometry,
         )?);
         Schema::new(table_name, columns)
+    }
+
+    fn data_loader(self) -> DataLoader<Self::DataParser> {
+        let options = self.0;
+        DataLoader::from_geo_json(options)
     }
 }
 

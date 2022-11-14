@@ -4,7 +4,6 @@ use geoflow_rs::{
         delimited::DelimitedDataOptions,
         excel::ExcelOptions,
         geo_json::GeoJsonOptions,
-        load::DataLoader,
         shape::ShapeDataOptions,
     },
     database::create_db_pool,
@@ -62,7 +61,7 @@ async fn delimited_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let mut path = std::env::current_dir()?;
     path.push("tests/delimited data test.csv");
     let options = DelimitedDataOptions::new(path, ',', true);
-    let analyzer = SchemaAnalyzer::from_delimited(options.clone());
+    let analyzer = SchemaAnalyzer::from_delimited(options);
     let schema = analyzer.schema()?;
 
     assert_eq!(expected_table_name, schema.table_name());
@@ -85,7 +84,7 @@ async fn delimited_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let create_statement = schema.create_statement(db_schema);
     sqlx::query(&create_statement).execute(&pool).await?;
 
-    let loader = DataLoader::from_delimited(options);
+    let loader = analyzer.loader();
     let copy_options = schema.copy_options(db_schema);
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 
@@ -177,7 +176,7 @@ async fn excel_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let mut path = std::env::current_dir()?;
     path.push("tests/excel data test.xlsx");
     let options = ExcelOptions::new(path, String::from("tblUST_DB"));
-    let analyzer = SchemaAnalyzer::from_excel(options.clone());
+    let analyzer = SchemaAnalyzer::from_excel(options);
     let schema = analyzer.schema()?;
 
     assert_eq!(expected_table_name, schema.table_name());
@@ -200,7 +199,7 @@ async fn excel_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let create_statement = schema.create_statement(db_schema);
     sqlx::query(&create_statement).execute(&pool).await?;
 
-    let loader = DataLoader::from_excel(options);
+    let loader = analyzer.loader();
     let copy_options = schema.copy_options(db_schema);
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 
@@ -275,7 +274,7 @@ async fn shapefile_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let mut path = std::env::current_dir()?;
     path.push("tests/shape-data-test/shape_data_test.shp");
     let options = ShapeDataOptions::new(path);
-    let analyzer = SchemaAnalyzer::from_shapefile(options.clone());
+    let analyzer = SchemaAnalyzer::from_shapefile(options);
     let schema = analyzer.schema()?;
 
     assert_eq!(expected_table_name, schema.table_name());
@@ -298,7 +297,7 @@ async fn shapefile_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let create_statement = schema.create_statement(db_schema);
     sqlx::query(&create_statement).execute(&pool).await?;
 
-    let loader = DataLoader::from_shapefile(options);
+    let loader = analyzer.loader();
     let copy_options = schema.copy_options(db_schema);
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 
@@ -309,6 +308,7 @@ async fn shapefile_data_loading() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn geojson_data_loading() -> Result<(), Box<dyn std::error::Error>> {
+    //https://arcgis.metc.state.mn.us/server/rest/services/ESWastewater/RainGaugeSites/FeatureServer
     let db_schema = "geoflow";
     let expected_table_name = "geojson_data_test";
     let expected_column_names = [
@@ -356,7 +356,7 @@ async fn geojson_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let mut path = std::env::current_dir()?;
     path.push("tests/geojson data test.geojson");
     let options = GeoJsonOptions::new(path);
-    let analyzer = SchemaAnalyzer::from_geo_json(options.clone());
+    let analyzer = SchemaAnalyzer::from_geo_json(options);
     let schema = analyzer.schema()?;
 
     assert_eq!(expected_table_name, schema.table_name());
@@ -379,7 +379,7 @@ async fn geojson_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let create_statement = schema.create_statement(db_schema);
     sqlx::query(&create_statement).execute(&pool).await?;
 
-    let loader = DataLoader::from_geo_json(options);
+    let loader = analyzer.loader();
     let copy_options = schema.copy_options(db_schema);
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 
