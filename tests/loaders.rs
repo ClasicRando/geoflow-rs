@@ -3,6 +3,7 @@ use geoflow_rs::{
         analyze::{ColumnType, SchemaAnalyzer},
         delimited::DelimitedDataOptions,
         excel::ExcelOptions,
+        geo_json::GeoJsonOptions,
         load::DataLoader,
         shape::ShapeDataOptions,
     },
@@ -302,6 +303,87 @@ async fn shapefile_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 
     assert_eq!(1244_u64, records_loaded);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn geojson_data_loading() -> Result<(), Box<dyn std::error::Error>> {
+    let db_schema = "geoflow";
+    let expected_table_name = "geojson_data_test";
+    let expected_column_names = [
+        ("objectid", ColumnType::Number),
+        ("uniqueid", ColumnType::Number),
+        ("featurelabel", ColumnType::Text),
+        ("sitename", ColumnType::Text),
+        ("featurestatus", ColumnType::Text),
+        ("featureowner", ColumnType::Text),
+        ("wwtp", ColumnType::Text),
+        ("locationdescription", ColumnType::Text),
+        ("address", ColumnType::Text),
+        ("ctu_name", ColumnType::Text),
+        ("co_name", ColumnType::Text),
+        ("zip", ColumnType::Number),
+        ("notes", ColumnType::Text),
+        ("gpsdate", ColumnType::Text),
+        ("gpsaccuracy", ColumnType::Text),
+        ("gpsdatasource", ColumnType::Text),
+        ("gpsnorthing", ColumnType::Number),
+        ("gpseasting", ColumnType::Number),
+        ("yearopened", ColumnType::Number),
+        ("yearclosed", ColumnType::Text),
+        ("datasource", ColumnType::Text),
+        ("datasourcedate", ColumnType::Number),
+        ("assetid", ColumnType::Text),
+        ("parentid", ColumnType::Text),
+        ("eamasseturl", ColumnType::Text),
+        ("majorwatershed", ColumnType::Text),
+        ("secondarywatershed", ColumnType::Text),
+        ("created_user", ColumnType::Text),
+        ("created_date", ColumnType::Number),
+        ("last_edited_user", ColumnType::Text),
+        ("last_edited_date", ColumnType::Number),
+        ("globalid", ColumnType::Text),
+        ("featurestatus_desc", ColumnType::Text),
+        ("featureowner_desc", ColumnType::Text),
+        ("wwtp_desc", ColumnType::Text),
+        ("ctu_name_desc", ColumnType::Text),
+        ("co_name_desc", ColumnType::Text),
+        ("datasource_desc", ColumnType::Text),
+        ("geometry", ColumnType::Geometry),
+    ];
+
+    let mut path = std::env::current_dir()?;
+    path.push("tests/geojson data test.geojson");
+    let options = GeoJsonOptions::new(path);
+    let analyzer = SchemaAnalyzer::from_geo_json(options.clone());
+    let schema = analyzer.schema()?;
+
+    assert_eq!(expected_table_name, schema.table_name());
+
+    let fields = schema.columns();
+    assert_eq!(expected_column_names.len(), fields.len());
+    for (ex_field, field) in expected_column_names.iter().zip(fields) {
+        assert_eq!(ex_field.0, field.name());
+        assert_eq!(&ex_field.1, field.column_type(), "field = {}", ex_field.0);
+    }
+
+    let pool = create_db_pool().await?;
+    sqlx::query(&format!(
+        "drop table if exists {}.{}",
+        db_schema,
+        schema.table_name()
+    ))
+    .execute(&pool)
+    .await?;
+    let create_statement = schema.create_statement(db_schema);
+    sqlx::query(&create_statement).execute(&pool).await?;
+
+    let loader = DataLoader::from_geo_json(options);
+    let copy_options = schema.copy_options(db_schema);
+    let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
+
+    assert_eq!(26_u64, records_loaded);
 
     Ok(())
 }
