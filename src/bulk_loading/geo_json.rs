@@ -63,7 +63,6 @@ impl SchemaParser for GeoJsonSchemaParser {
         for feature in feature_reader.features() {
             let feature = feature?;
             for (i, (field, value)) in feature.properties_iter().enumerate() {
-                // Get column index, update if in vector and undefined type
                 match columns.get_mut(i) {
                     Some((_, _, Some(_))) => continue,
                     Some((_, _, typ)) => {
