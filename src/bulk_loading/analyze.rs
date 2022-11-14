@@ -106,6 +106,10 @@ impl ColumnMetadata {
         })
     }
 
+    pub fn from_tuple(tup: (String, usize, Option<ColumnType>)) -> BulkDataResult<Self> {
+        Self::new(&tup.0, tup.1, tup.2.unwrap_or(ColumnType::Text))
+    }
+
     #[inline]
     pub fn name(&self) -> &str {
         &self.name
