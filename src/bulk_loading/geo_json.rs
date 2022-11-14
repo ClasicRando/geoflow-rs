@@ -22,6 +22,7 @@ fn column_type_from_value(value: &JsonValue) -> Option<ColumnType> {
     }
 }
 
+#[derive(Clone)]
 pub struct GeoJsonOptions {
     file_path: PathBuf,
 }
@@ -63,29 +64,33 @@ impl SchemaParser for GeoJsonSchemaParser {
             let feature = feature?;
             for (i, (field, value)) in feature.properties_iter().enumerate() {
                 // Get column index, update if in vector and undefined type
-                let column = columns.get_mut(i).map(|(_, _, typ)| {
-                    if typ.is_none() {
+                match columns.get_mut(i) {
+                    Some((_, _, Some(_))) => continue,
+                    Some((_, _, typ)) => {
                         *typ = column_type_from_value(value);
-                        undefined_type = typ.is_none();
+                        undefined_type = undefined_type || typ.is_none();
                     }
-                });
-                // If not in vector, add column entry
-                if column.is_none() {
-                    let typ = column_type_from_value(value);
-                    undefined_type = typ.is_none();
-                    columns.push((field.to_owned(), i, typ));
+                    None => {
+                        let typ = column_type_from_value(value);
+                        undefined_type = undefined_type || typ.is_none();
+                        columns.push((field.to_owned(), i, typ));
+                    }
                 }
             }
             if !undefined_type {
                 break;
             }
+            undefined_type = false;
         }
-        let columns: Vec<ColumnMetadata> = columns
+        let mut columns: Vec<ColumnMetadata> = columns
             .into_iter()
-            .map(|(field, index, typ)| {
-                ColumnMetadata::new(&field, index, typ.unwrap_or(ColumnType::Text))
-            })
+            .map(|tup| ColumnMetadata::from_tuple(tup))
             .collect::<BulkDataResult<_>>()?;
+        columns.push(ColumnMetadata::new(
+            "geometry",
+            columns.len(),
+            ColumnType::Geometry,
+        )?);
         Schema::new(table_name, columns)
     }
 }
