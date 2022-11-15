@@ -49,7 +49,8 @@ impl SchemaParser for IpcSchemaParser {
 
     fn data_loader(self) -> DataLoader<Self::DataParser> {
         let options = self.0;
-        DataLoader::from_ipc(options)
+        let parser = IpcFileParser::new(options);
+        DataLoader::new(parser)
     }
 }
 

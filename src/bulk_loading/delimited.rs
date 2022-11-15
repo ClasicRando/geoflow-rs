@@ -90,7 +90,8 @@ impl SchemaParser for DelimitedSchemaParser {
 
     fn data_loader(self) -> DataLoader<Self::DataParser> {
         let options = self.0;
-        DataLoader::from_delimited(options)
+        let parser = DelimitedDataParser::new(options);
+        DataLoader::new(parser)
     }
 }
 

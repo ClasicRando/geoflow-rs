@@ -77,7 +77,8 @@ impl SchemaParser for ExcelSchemaParser {
 
     fn data_loader(self) -> DataLoader<Self::DataParser> {
         let options = self.0;
-        DataLoader::from_excel(options)
+        let parser = ExcelDataParser::new(options);
+        DataLoader::new(parser)
     }
 }
 

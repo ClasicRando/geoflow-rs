@@ -105,7 +105,8 @@ impl SchemaParser for ShapeDataSchemaParser {
 
     fn data_loader(self) -> DataLoader<Self::DataParser> {
         let options = self.0;
-        DataLoader::from_shapefile(options)
+        let parser = ShapeDataParser::new(options);
+        DataLoader::new(parser)
     }
 }
 

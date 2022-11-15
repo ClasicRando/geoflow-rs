@@ -94,7 +94,8 @@ impl SchemaParser for GeoJsonSchemaParser {
 
     fn data_loader(self) -> DataLoader<Self::DataParser> {
         let options = self.0;
-        DataLoader::from_geo_json(options)
+        let parser = GeoJsonParser::new(options);
+        DataLoader::new(parser)
     }
 }
 

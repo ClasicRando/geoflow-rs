@@ -49,7 +49,8 @@ impl SchemaParser for ParquetSchemaParser {
 
     fn data_loader(self) -> DataLoader<Self::DataParser> {
         let options = self.0;
-        DataLoader::from_parquet(options)
+        let parser = ParquetFileParser::new(options);
+        DataLoader::new(parser)
     }
 }
 

@@ -3,14 +3,8 @@ use sqlx::PgPool;
 use tokio::sync::mpsc::{channel as mpsc_channel, error::SendError, Sender};
 
 use super::{
-    delimited::{DelimitedDataOptions, DelimitedDataParser},
     error::{BulkDataError, BulkDataResult},
-    excel::{ExcelDataParser, ExcelOptions},
-    geo_json::{GeoJsonOptions, GeoJsonParser},
-    ipc::{IpcFileOptions, IpcFileParser},
     options::DataFileOptions,
-    parquet::{ParquetFileOptions, ParquetFileParser},
-    shape::{ShapeDataOptions, ShapeDataParser},
     utilities::escape_csv_string,
 };
 
@@ -52,7 +46,9 @@ impl CopyOptions {
     }
 }
 
-pub fn csv_result_iter_to_string<I: Iterator<Item = BulkDataResult<String>>>(csv_iter: I) -> BulkDataResult<String> {
+pub fn csv_result_iter_to_string<I: Iterator<Item = BulkDataResult<String>>>(
+    csv_iter: I,
+) -> BulkDataResult<String> {
     let mut csv_data = String::new();
     for s in csv_iter {
         let csv_value = s?;
@@ -92,43 +88,10 @@ pub trait DataParser {
 
 pub struct DataLoader<P: DataParser + Send + Sync + 'static>(P);
 
-impl DataLoader<DelimitedDataParser> {
-    pub fn from_delimited(options: DelimitedDataOptions) -> Self {
-        Self(DelimitedDataParser::new(options))
-    }
-}
-
-impl DataLoader<ExcelDataParser> {
-    pub fn from_excel(options: ExcelOptions) -> Self {
-        Self(ExcelDataParser::new(options))
-    }
-}
-
-impl DataLoader<ShapeDataParser> {
-    pub fn from_shapefile(options: ShapeDataOptions) -> Self {
-        Self(ShapeDataParser::new(options))
-    }
-}
-
-impl DataLoader<GeoJsonParser> {
-    pub fn from_geo_json(options: GeoJsonOptions) -> Self {
-        Self(GeoJsonParser::new(options))
-    }
-}
-
-impl DataLoader<ParquetFileParser> {
-    pub fn from_parquet(options: ParquetFileOptions) -> Self {
-        Self(ParquetFileParser::new(options))
-    }
-}
-
-impl DataLoader<IpcFileParser> {
-    pub fn from_ipc(options: IpcFileOptions) -> Self {
-        Self(IpcFileParser::new(options))
-    }
-}
-
 impl<P: DataParser + Send + Sync + 'static> DataLoader<P> {
+    pub fn new(parser: P) -> Self {
+        Self(parser)
+    }
 
     pub async fn load_data(self, copy_options: CopyOptions, pool: PgPool) -> BulkLoadResult {
         let copy_statement = copy_options.copy_statement(self.0.options());
