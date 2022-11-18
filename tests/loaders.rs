@@ -4,7 +4,9 @@ use geoflow_rs::{
         delimited::DelimitedDataOptions,
         excel::ExcelOptions,
         geo_json::GeoJsonOptions,
-        shape::ShapeDataOptions, parquet::ParquetFileOptions,
+        ipc::IpcFileOptions,
+        parquet::ParquetFileOptions,
+        shape::ShapeDataOptions,
     },
     database::create_db_pool,
 };
@@ -434,9 +436,6 @@ async fn parquet_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(expected_table_name, schema.table_name());
 
     let fields = schema.columns();
-    for field in fields.iter() {
-        println!("{:?}", field)
-    }
     assert_eq!(expected_column_names.len(), fields.len());
     for (ex_field, field) in expected_column_names.iter().zip(fields) {
         assert_eq!(ex_field.0, field.name());
@@ -458,7 +457,91 @@ async fn parquet_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let copy_options = schema.copy_options(db_schema);
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 
-    assert_eq!(196486_u64, records_loaded);
+    assert_eq!(10000_u64, records_loaded);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn ipc_data_loading() -> Result<(), Box<dyn std::error::Error>> {
+    let db_schema = "geoflow";
+    let expected_table_name = "ipc_data_test";
+    let expected_column_names = [
+        ("facility_id", ColumnType::Text),
+        ("facility_name", ColumnType::Text),
+        ("address1", ColumnType::Text),
+        ("address2", ColumnType::Text),
+        ("city", ColumnType::Text),
+        ("state", ColumnType::Text),
+        ("zip", ColumnType::Text),
+        ("contact", ColumnType::Text),
+        ("contact_address1", ColumnType::Text),
+        ("contact_address2", ColumnType::Text),
+        ("contact_city", ColumnType::Text),
+        ("contact_state", ColumnType::Text),
+        ("contact_zip", ColumnType::Text),
+        ("tank_id", ColumnType::Text),
+        ("compartment_tank", ColumnType::BigInt),
+        ("manifold_tank", ColumnType::BigInt),
+        ("main_tank", ColumnType::BigInt),
+        ("root_tank_id", ColumnType::BigInt),
+        ("installation_date", ColumnType::TimestampWithZone),
+        ("perm_close_date", ColumnType::TimestampWithZone),
+        ("capacity", ColumnType::BigInt),
+        ("commercial", ColumnType::Boolean),
+        ("regulated", ColumnType::Boolean),
+        ("product_name", ColumnType::Text),
+        ("overfill_protection_name", ColumnType::Text),
+        ("spill_protection_name", ColumnType::Text),
+        ("leak_detection_name", ColumnType::Text),
+        ("tank_constr_name", ColumnType::Text),
+        ("piping_constr_name", ColumnType::Text),
+        ("piping_system_name", ColumnType::Text),
+        ("other_cp_tank", ColumnType::SmallInt),
+        ("other_cp_name", ColumnType::SmallInt),
+        ("tank_status_name", ColumnType::Text),
+        ("fips_county_desc", ColumnType::Text),
+        ("latitude", ColumnType::DoublePrecision),
+        ("longitude", ColumnType::DoublePrecision),
+        ("tankcertno", ColumnType::BigInt),
+        ("fr_bus_name", ColumnType::Text),
+        ("fr_amt", ColumnType::BigInt),
+        ("fr_desc", ColumnType::Text),
+        ("last_update_date", ColumnType::TimestampWithZone),
+        ("certno", ColumnType::Text),
+    ];
+
+    let mut path = std::env::current_dir()?;
+    path.push("tests/ipc data test.ipc");
+    let options = IpcFileOptions::new(path);
+    let analyzer = SchemaAnalyzer::from_ipc(options);
+    let schema = analyzer.schema()?;
+
+    assert_eq!(expected_table_name, schema.table_name());
+
+    let fields = schema.columns();
+    assert_eq!(expected_column_names.len(), fields.len());
+    for (ex_field, field) in expected_column_names.iter().zip(fields) {
+        assert_eq!(ex_field.0, field.name());
+        assert_eq!(&ex_field.1, field.column_type());
+    }
+
+    let pool = create_db_pool().await?;
+    sqlx::query(&format!(
+        "drop table if exists {}.{}",
+        db_schema,
+        schema.table_name()
+    ))
+    .execute(&pool)
+    .await?;
+    let create_statement = schema.create_statement(db_schema);
+    sqlx::query(&create_statement).execute(&pool).await?;
+
+    let loader = analyzer.loader();
+    let copy_options = schema.copy_options(db_schema);
+    let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
+
+    assert_eq!(299_u64, records_loaded);
 
     Ok(())
 }
