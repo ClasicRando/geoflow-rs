@@ -13,6 +13,8 @@ pub enum BulkDataError {
     Excel(calamine::Error),
     Shp(shapefile::Error),
     GeoJSON(geojson::Error),
+    Parquet(parquet::errors::ParquetError),
+    Wkb(wkb::WKBReadError),
 }
 
 impl std::error::Error for BulkDataError {}
@@ -28,6 +30,8 @@ impl Display for BulkDataError {
             Self::Excel(error) => write!(f, "Excel Error\n{}", error),
             Self::Shp(error) => write!(f, "Shapefile Error\n{}", error),
             Self::GeoJSON(error) => write!(f, "GeoJSON Error\n{}", error),
+            Self::Parquet(error) => write!(f, "Parquet Error\n{}", error),
+            Self::Wkb(error) => write!(f, "WKB Error\n{:?}", error),
         }
     }
 }
@@ -97,3 +101,16 @@ impl From<tokio::sync::oneshot::error::RecvError> for BulkDataError {
         Self::Generic(format!("{}", error))
     }
 }
+
+impl From<parquet::errors::ParquetError> for BulkDataError {
+    fn from(error: parquet::errors::ParquetError) -> Self {
+        Self::Parquet(error)
+    }
+}
+
+impl From<wkb::WKBReadError> for BulkDataError {
+    fn from(error: wkb::WKBReadError) -> Self {
+        Self::Wkb(error)
+    }
+}
+
