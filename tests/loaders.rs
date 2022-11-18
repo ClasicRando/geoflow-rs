@@ -4,7 +4,7 @@ use geoflow_rs::{
         delimited::DelimitedDataOptions,
         excel::ExcelOptions,
         geo_json::GeoJsonOptions,
-        shape::ShapeDataOptions,
+        shape::ShapeDataOptions, parquet::ParquetFileOptions,
     },
     database::create_db_pool,
 };
@@ -384,6 +384,81 @@ async fn geojson_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 
     assert_eq!(26_u64, records_loaded);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn parquet_data_loading() -> Result<(), Box<dyn std::error::Error>> {
+    //https://arcgis.metc.state.mn.us/server/rest/services/ESWastewater/RainGaugeSites/FeatureServer
+    let db_schema = "geoflow";
+    let expected_table_name = "parquet_data_test";
+    let expected_column_names = [
+        ("objectid", ColumnType::BigInt),
+        ("datasummary", ColumnType::Text),
+        ("api_number", ColumnType::BigInt),
+        ("comp_date", ColumnType::DoublePrecision),
+        ("permit_number", ColumnType::Text),
+        ("permit_date", ColumnType::DoublePrecision),
+        ("status", ColumnType::Text),
+        ("status_text", ColumnType::Text),
+        ("company_name", ColumnType::Text),
+        ("farm_name", ColumnType::Text),
+        ("farm_num", ColumnType::Text),
+        ("total_depth", ColumnType::DoublePrecision),
+        ("tdformation", ColumnType::Text),
+        ("tdfmtext", ColumnType::Text),
+        ("ilstrat", ColumnType::Text),
+        ("elevation", ColumnType::DoublePrecision),
+        ("eref_def", ColumnType::Text),
+        ("longitude", ColumnType::DoublePrecision),
+        ("latitude", ColumnType::DoublePrecision),
+        ("location", ColumnType::Text),
+        ("logs", ColumnType::Text),
+        ("flag_las", ColumnType::Text),
+        ("flag_core_analysis", ColumnType::Text),
+        ("flag_core", ColumnType::Text),
+        ("flag_samples", ColumnType::Text),
+        ("flag_log", ColumnType::Text),
+        ("comp_date_dt", ColumnType::Text),
+        ("permit_date_dt", ColumnType::Text),
+        ("geometry", ColumnType::Geometry),
+    ];
+
+    let mut path = std::env::current_dir()?;
+    path.push("tests/parquet data test.parquet");
+    let options = ParquetFileOptions::new(path);
+    let analyzer = SchemaAnalyzer::from_parquet(options);
+    let schema = analyzer.schema()?;
+
+    assert_eq!(expected_table_name, schema.table_name());
+
+    let fields = schema.columns();
+    for field in fields.iter() {
+        println!("{:?}", field)
+    }
+    assert_eq!(expected_column_names.len(), fields.len());
+    for (ex_field, field) in expected_column_names.iter().zip(fields) {
+        assert_eq!(ex_field.0, field.name());
+        assert_eq!(&ex_field.1, field.column_type(), "field = {}", ex_field.0);
+    }
+
+    let pool = create_db_pool().await?;
+    sqlx::query(&format!(
+        "drop table if exists {}.{}",
+        db_schema,
+        schema.table_name()
+    ))
+    .execute(&pool)
+    .await?;
+    let create_statement = schema.create_statement(db_schema);
+    sqlx::query(&create_statement).execute(&pool).await?;
+
+    let loader = analyzer.loader();
+    let copy_options = schema.copy_options(db_schema);
+    let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
+
+    assert_eq!(196486_u64, records_loaded);
 
     Ok(())
 }
