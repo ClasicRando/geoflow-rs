@@ -15,6 +15,8 @@ pub enum BulkDataError {
     GeoJSON(geojson::Error),
     Parquet(parquet::errors::ParquetError),
     Wkb(wkb::WKBReadError),
+    Avro(avro_rs::Error),
+    Json(serde_json::Error),
 }
 
 impl std::error::Error for BulkDataError {}
@@ -32,6 +34,8 @@ impl Display for BulkDataError {
             Self::GeoJSON(error) => write!(f, "GeoJSON Error\n{}", error),
             Self::Parquet(error) => write!(f, "Parquet Error\n{}", error),
             Self::Wkb(error) => write!(f, "WKB Error\n{:?}", error),
+            Self::Avro(error) => write!(f, "Avro Error\n{:?}", error),
+            Self::Json(error) => write!(f, "JSON Error\n{:?}", error),
         }
     }
 }
@@ -114,3 +118,14 @@ impl From<wkb::WKBReadError> for BulkDataError {
     }
 }
 
+impl From<avro_rs::Error> for BulkDataError {
+    fn from(error: avro_rs::Error) -> Self {
+        Self::Avro(error)
+    }
+}
+
+impl From<serde_json::Error> for BulkDataError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::Json(error)
+    }
+}
