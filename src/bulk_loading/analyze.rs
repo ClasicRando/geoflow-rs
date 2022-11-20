@@ -55,6 +55,8 @@ pub enum ColumnType {
     Interval,
     Geometry,
     Json,
+    UUID,
+    SmallIntArray,
 }
 
 impl ColumnType {
@@ -76,6 +78,8 @@ impl ColumnType {
             ColumnType::Interval => "interval",
             ColumnType::Geometry => "geometry",
             ColumnType::Json => "jsonb",
+            ColumnType::UUID => "uuid",
+            ColumnType::SmallIntArray => "smallint[]",
         }
     }
 }
