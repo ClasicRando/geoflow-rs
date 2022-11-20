@@ -41,6 +41,7 @@ impl DataFileOptions for GeoJsonOptions {}
 
 pub struct GeoJsonSchemaParser(GeoJsonOptions);
 
+#[async_trait::async_trait]
 impl SchemaParser for GeoJsonSchemaParser {
     type Options = GeoJsonOptions;
     type DataParser = GeoJsonParser;
@@ -52,7 +53,7 @@ impl SchemaParser for GeoJsonSchemaParser {
         Self(options)
     }
 
-    fn schema(&self) -> BulkDataResult<Schema> {
+    async fn schema(&self) -> BulkDataResult<Schema> {
         let Some(table_name) = self.0.file_path.file_name().and_then(|f| f.to_str()) else {
             return Err(format!("Could not get filename for \"{:?}\"", &self.0.file_path).into())
         };

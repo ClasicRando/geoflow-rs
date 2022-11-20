@@ -42,6 +42,7 @@ impl DataFileOptions for ExcelOptions {}
 
 pub struct ExcelSchemaParser(ExcelOptions);
 
+#[async_trait::async_trait]
 impl SchemaParser for ExcelSchemaParser {
     type Options = ExcelOptions;
     type DataParser = ExcelDataParser;
@@ -53,7 +54,7 @@ impl SchemaParser for ExcelSchemaParser {
         Self(options)
     }
 
-    fn schema(&self) -> BulkDataResult<Schema> {
+    async fn schema(&self) -> BulkDataResult<Schema> {
         let Some(table_name) = self.0.file_path.file_name().and_then(|f| f.to_str()) else {
             return Err(format!("Could not get filename for \"{:?}\"", &self.0.file_path).into())
         };

@@ -182,6 +182,7 @@ impl Schema {
     }
 }
 
+#[async_trait::async_trait]
 pub trait SchemaParser {
     type Options: DataFileOptions;
     type DataParser: DataParser + Send + Sync;
@@ -189,7 +190,7 @@ pub trait SchemaParser {
     fn new(options: Self::Options) -> Self
     where
         Self: Sized;
-    fn schema(&self) -> BulkDataResult<Schema>;
+    async fn schema(&self) -> BulkDataResult<Schema>;
     fn data_loader(self) -> DataLoader<Self::DataParser>;
 }
 
@@ -232,8 +233,8 @@ impl SchemaAnalyzer<IpcSchemaParser> {
 }
 
 impl<P: SchemaParser> SchemaAnalyzer<P> {
-    pub fn schema(&self) -> BulkDataResult<Schema> {
-        self.0.schema()
+    pub async fn schema(&self) -> BulkDataResult<Schema> {
+        self.0.schema().await
     }
 
     pub fn loader(self) -> DataLoader<P::DataParser> {

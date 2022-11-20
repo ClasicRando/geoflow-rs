@@ -62,6 +62,7 @@ fn column_type_from_value(value: &FieldValue) -> ColumnType {
 
 pub struct ShapeDataSchemaParser(ShapeDataOptions);
 
+#[async_trait::async_trait]
 impl SchemaParser for ShapeDataSchemaParser {
     type Options = ShapeDataOptions;
     type DataParser = ShapeDataParser;
@@ -73,7 +74,7 @@ impl SchemaParser for ShapeDataSchemaParser {
         Self(options)
     }
 
-    fn schema(&self) -> BulkDataResult<Schema> {
+    async fn schema(&self) -> BulkDataResult<Schema> {
         let Some(table_name) = self.0.file_path.file_name().and_then(|f| f.to_str()) else {
             return Err(format!("Could not get filename for \"{:?}\"", &self.0.file_path).into())
         };

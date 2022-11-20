@@ -64,7 +64,7 @@ async fn delimited_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     path.push("tests/delimited data test.csv");
     let options = DelimitedDataOptions::new(path, ',', true);
     let analyzer = SchemaAnalyzer::from_delimited(options);
-    let schema = analyzer.schema()?;
+    let schema = analyzer.schema().await?;
 
     assert_eq!(expected_table_name, schema.table_name());
 
@@ -179,7 +179,7 @@ async fn excel_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     path.push("tests/excel data test.xlsx");
     let options = ExcelOptions::new(path, String::from("tblUST_DB"));
     let analyzer = SchemaAnalyzer::from_excel(options);
-    let schema = analyzer.schema()?;
+    let schema = analyzer.schema().await?;
 
     assert_eq!(expected_table_name, schema.table_name());
 
@@ -277,7 +277,7 @@ async fn shapefile_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     path.push("tests/shape-data-test/shape_data_test.shp");
     let options = ShapeDataOptions::new(path);
     let analyzer = SchemaAnalyzer::from_shapefile(options);
-    let schema = analyzer.schema()?;
+    let schema = analyzer.schema().await?;
 
     assert_eq!(expected_table_name, schema.table_name());
 
@@ -359,7 +359,7 @@ async fn geojson_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     path.push("tests/geojson data test.geojson");
     let options = GeoJsonOptions::new(path);
     let analyzer = SchemaAnalyzer::from_geo_json(options);
-    let schema = analyzer.schema()?;
+    let schema = analyzer.schema().await?;
 
     assert_eq!(expected_table_name, schema.table_name());
 
@@ -431,7 +431,7 @@ async fn parquet_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     path.push("tests/parquet data test.parquet");
     let options = ParquetFileOptions::new(path);
     let analyzer = SchemaAnalyzer::from_parquet(options);
-    let schema = analyzer.schema()?;
+    let schema = analyzer.schema().await?;
 
     assert_eq!(expected_table_name, schema.table_name());
 
@@ -515,7 +515,7 @@ async fn ipc_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     path.push("tests/ipc data test.ipc");
     let options = IpcFileOptions::new(path);
     let analyzer = SchemaAnalyzer::from_ipc(options);
-    let schema = analyzer.schema()?;
+    let schema = analyzer.schema().await?;
 
     assert_eq!(expected_table_name, schema.table_name());
 
