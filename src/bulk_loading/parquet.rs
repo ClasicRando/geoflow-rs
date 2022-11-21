@@ -8,10 +8,10 @@ use super::{
 use parquet::{
     file::{reader::FileReader, serialized_reader::SerializedFileReader},
     record::Field,
-    basic::Type as PhysicalType,
+    basic::{Type as PhysicalType, LogicalType},
 };
 use polars::prelude::{DataFrame, ParquetReader, SerReader};
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, path::PathBuf, sync::Arc};
 use tokio::sync::mpsc::{error::SendError, Sender};
 use wkb::wkb_to_geom;
 use wkt::ToWkt;
@@ -39,23 +39,40 @@ impl ParquetFileOptions {
 
 impl DataFileOptions for ParquetFileOptions {}
 
-impl From<(&str, PhysicalType)> for ColumnType {
-    fn from(t: (&str, PhysicalType)) -> Self {
-        match t.1 {
-            PhysicalType::BOOLEAN => ColumnType::Boolean,
-            PhysicalType::INT32 => ColumnType::Integer,
-            PhysicalType::INT64 => ColumnType::BigInt,
-            PhysicalType::INT96 => ColumnType::BigInt,
-            PhysicalType::FLOAT => ColumnType::Real,
-            PhysicalType::DOUBLE => ColumnType::DoublePrecision,
-            PhysicalType::BYTE_ARRAY => {
-                if t.0 == "geometry" {
-                    ColumnType::Geometry
-                } else {
-                    ColumnType::Text
+impl From<&Arc<parquet::schema::types::Type>> for ColumnType {
+    fn from(field: &Arc<parquet::schema::types::Type>) -> Self {
+        match field.get_basic_info().logical_type() {
+            Some(LogicalType::String) => ColumnType::Text,
+            Some(LogicalType::Map) => ColumnType::Json,
+            Some(LogicalType::List) => ColumnType::Json,
+            Some(LogicalType::Enum) => ColumnType::Text,
+            Some(LogicalType::Decimal { .. }) => ColumnType::DoublePrecision,
+            Some(LogicalType::Date) => ColumnType::Date,
+            Some(LogicalType::Time { .. }) => ColumnType::Time,
+            Some(LogicalType::Timestamp { is_adjusted_to_u_t_c, .. }) => if is_adjusted_to_u_t_c {
+                ColumnType::Timestamp
+            } else {
+                ColumnType::TimestampWithZone
+            },
+            Some(LogicalType::Bson) => ColumnType::Json,
+            Some(LogicalType::Json) => ColumnType::Json,
+            Some(LogicalType::Uuid) => ColumnType::UUID,
+            _ => match field.get_physical_type() {
+                PhysicalType::BOOLEAN => ColumnType::Boolean,
+                PhysicalType::INT32 => ColumnType::Integer,
+                PhysicalType::INT64 => ColumnType::BigInt,
+                PhysicalType::INT96 => ColumnType::BigInt,
+                PhysicalType::FLOAT => ColumnType::Real,
+                PhysicalType::DOUBLE => ColumnType::DoublePrecision,
+                PhysicalType::BYTE_ARRAY => {
+                    if field.name() == "geometry" {
+                        ColumnType::Geometry
+                    } else {
+                        ColumnType::Text
+                    }
                 }
+                PhysicalType::FIXED_LEN_BYTE_ARRAY => ColumnType::Text,
             }
-            PhysicalType::FIXED_LEN_BYTE_ARRAY => ColumnType::Text,
         }
     }
 }
@@ -88,7 +105,7 @@ impl SchemaParser for ParquetSchemaParser {
             .enumerate()
             .map(|(i, field)| {
                 let name = field.name();
-                let actual_type = (name, field.get_physical_type()).into();
+                let actual_type = field.into();
                 ColumnMetadata::new(name, i, actual_type)
             })
             .collect::<BulkDataResult<_>>()?;
