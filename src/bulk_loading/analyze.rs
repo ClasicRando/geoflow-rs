@@ -1,10 +1,11 @@
 use super::{
+    arcgis::{ArcGisDataOptions, ArcGisRestSchemaParser},
     delimited::{DelimitedDataOptions, DelimitedSchemaParser},
     error::BulkDataResult,
     excel::{ExcelOptions, ExcelSchemaParser},
     geo_json::{GeoJsonOptions, GeoJsonSchemaParser},
     ipc::{IpcFileOptions, IpcSchemaParser},
-    load::{CopyOptions, DataParser, DataLoader},
+    load::{CopyOptions, DataLoader, DataParser},
     options::DataFileOptions,
     parquet::{ParquetFileOptions, ParquetSchemaParser},
     shape::{ShapeDataOptions, ShapeDataSchemaParser},
@@ -130,6 +131,7 @@ impl ColumnMetadata {
     }
 }
 
+#[derive(Debug)]
 pub struct Schema {
     table_name: String,
     columns: Vec<ColumnMetadata>,
@@ -229,6 +231,12 @@ impl SchemaAnalyzer<ParquetSchemaParser> {
 impl SchemaAnalyzer<IpcSchemaParser> {
     pub fn from_ipc(options: IpcFileOptions) -> Self {
         Self(IpcSchemaParser::new(options))
+    }
+}
+
+impl SchemaAnalyzer<ArcGisRestSchemaParser> {
+    pub fn from_arc_gis(options: ArcGisDataOptions) -> Self {
+        Self(ArcGisRestSchemaParser::new(options))
     }
 }
 
