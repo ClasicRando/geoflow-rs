@@ -422,8 +422,8 @@ async fn parquet_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         ("flag_core", ColumnType::Text),
         ("flag_samples", ColumnType::Text),
         ("flag_log", ColumnType::Text),
-        ("comp_date_dt", ColumnType::Text),
-        ("permit_date_dt", ColumnType::Text),
+        ("comp_date_dt", ColumnType::Timestamp),
+        ("permit_date_dt", ColumnType::Timestamp),
         ("geometry", ColumnType::Geometry),
     ];
 
