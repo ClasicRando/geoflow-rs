@@ -100,7 +100,7 @@ impl SchemaParser for GeoJsonSchemaParser {
     }
 }
 
-fn map_json_value(value: &JsonValue) -> String {
+pub fn map_json_value(value: &JsonValue) -> String {
     match value {
         JsonValue::Null => String::from(""),
         JsonValue::Bool(b) => b.to_string(),
