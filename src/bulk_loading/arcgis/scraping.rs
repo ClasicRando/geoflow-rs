@@ -1,5 +1,5 @@
 use crate::bulk_loading::error::{BulkDataError, BulkDataResult};
-use geojson::{feature::Id, Feature, FeatureCollection, Geometry, Value as GeomValue};
+use geojson::{feature::Id, Feature, FeatureCollection, Geometry, Value as GeomValue, GeoJson};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -27,7 +27,11 @@ impl QueryFormat {
             return Err((query, response.status()).into());
         }
         let feature_collection = match self {
-            Self::GeoJSON => response.json::<FeatureCollection>().await?,
+            Self::GeoJSON => match response.json::<GeoJson>().await? {
+                GeoJson::FeatureCollection(collection) => collection,
+                GeoJson::Geometry(_) => return Err("Expected a Feature collect but got Geometry".into()),
+                GeoJson::Feature(_) => return Err("Expected a Feature collect but got Feature".into()),
+            }
             Self::JSON => response.json::<JsonQueryResponse>().await?.into(),
             Self::NotSupported(name) => {
                 return Err(

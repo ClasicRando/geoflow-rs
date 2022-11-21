@@ -2,7 +2,7 @@ pub mod metadata;
 pub mod scraping;
 
 use self::{
-    metadata::{ArcGisRestMetadata, RestServiceFieldType},
+    metadata::{ArcGisRestMetadata, RestServiceFieldType, ServiceField},
     scraping::fetch_query,
 };
 use super::load::csv_values_to_string;
@@ -66,8 +66,8 @@ impl SchemaParser for ArcGisRestSchemaParser {
     }
 }
 
-fn map_arcgis_value(value: &Value, field_type: &RestServiceFieldType) -> BulkDataResult<String> {
-    Ok(match field_type {
+fn map_arcgis_value(value: &Value, field: &ServiceField) -> BulkDataResult<String> {
+    Ok(match field.field_type() {
         RestServiceFieldType::Blob => return Err("Blob type fields are not supported".into()),
         RestServiceFieldType::Geometry => return Err("Geometry type fields are not supported".into()),
         RestServiceFieldType::Raster => return Err("Raster type fields are not supported".into()),
@@ -84,7 +84,7 @@ fn map_arcgis_value(value: &Value, field_type: &RestServiceFieldType) -> BulkDat
                 _ => return Err("Date fields should only contain numbers or null".into()),
             }
         }
-        _ => value.to_string(),
+        _ => super::geo_json::map_json_value(value),
     })
 }
 
@@ -114,9 +114,9 @@ impl DataParser for ArcGisRestParser {
             Err(error) => return record_channel.send(Err(error)).await.err(),
         };
         let query_format = metadata.query_format();
-        let fields: HashMap<String, RestServiceFieldType> = metadata
+        let fields: HashMap<String, &ServiceField> = metadata
             .fields()
-            .map(|f| (f.name().to_owned(), f.field_type().clone()))
+            .map(|f| (f.name().to_owned(), f))
             .collect();
         let queries = match metadata.queries() {
             Ok(q) => q,
@@ -142,10 +142,10 @@ impl DataParser for ArcGisRestParser {
                 let collect_result = feature
                     .properties_iter()
                     .map(|(key, value)| -> BulkDataResult<String> {
-                        let Some(typ) = fields.get(key) else {
+                        let Some(field) = fields.get(key) else {
                             return Err(format!("Could not find a key found in a feature's properties: \"{}\"", key).into())
                         };
-                        map_arcgis_value(value, typ)
+                        map_arcgis_value(value, field)
                     })
                     .collect::<BulkDataResult<_>>();
                 let mut csv_row: Vec<String> = match collect_result {

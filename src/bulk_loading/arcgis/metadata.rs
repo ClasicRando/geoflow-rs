@@ -76,7 +76,7 @@ impl TryFrom<&RestServiceFieldType> for ColumnType {
     fn try_from(value: &RestServiceFieldType) -> Result<Self, Self::Error> {
         Ok(match value {
             RestServiceFieldType::Blob => return Err("Blob type fields are not supported".into()),
-            RestServiceFieldType::Date => ColumnType::Date,
+            RestServiceFieldType::Date => ColumnType::Timestamp,
             RestServiceFieldType::Double => ColumnType::DoublePrecision,
             RestServiceFieldType::Float => ColumnType::Real,
             RestServiceFieldType::Geometry => {
@@ -99,9 +99,9 @@ impl TryFrom<&RestServiceFieldType> for ColumnType {
 
 #[derive(Deserialize)]
 pub struct CodedValue {
-    pub(crate) name: String,
+    name: String,
     #[serde(deserialize_with = "deserialize_string_from_number")]
-    pub(crate) code: String,
+    code: String,
 }
 
 #[derive(Deserialize)]
@@ -147,13 +147,9 @@ impl ServiceField {
 }
 
 impl ServiceField {
-    pub fn is_coded(&self) -> Option<HashMap<String, String>> {
-        if let Some(domain) = &self.domain {
-            if let FieldDomain::Coded { coded_values, .. } = domain {
-                Some(coded_to_map(coded_values))
-            } else {
-                None
-            }
+    pub fn coded_values(&self) -> Option<HashMap<String, String>> {
+        if let Some(FieldDomain::Coded { coded_values, .. }) = &self.domain {
+            Some(coded_to_map(coded_values))
         } else {
             None
         }
@@ -230,11 +226,12 @@ impl<'m> QueryIterator<'m> {
         let mut url_params = metadata.geometry_options()?;
         let fields = metadata.fields().map(|f| f.name.to_owned()).join(",");
         url_params.push(("f", metadata.query_format.as_str()));
-        let query_url = match metadata.url.join("/query") {
+        let query_url = match Url::parse(format!("{}/query", metadata.url).as_str()) {
             Ok(q) => q,
             Err(error) => return Err(error.into()),
         };
         if metadata.supports_pagination() {
+            url_params.push(("where", "1=1"));
             Ok(Self::Pagination {
                 query_url,
                 scrape_count,
@@ -514,13 +511,16 @@ impl<'u> TryFrom<ArcGisRestMetadata<'u>> for Schema {
     type Error = BulkDataError;
 
     fn try_from(value: ArcGisRestMetadata<'u>) -> Result<Self, Self::Error> {
-        let columns: Vec<ColumnMetadata> = value
+        let mut columns: Vec<ColumnMetadata> = value
             .fields()
             .enumerate()
             .map(|(i, f)| -> BulkDataResult<ColumnMetadata> {
                 ColumnMetadata::new(f.name(), i, f.field_type().try_into()?)
             })
             .collect::<BulkDataResult<_>>()?;
+        if !value.is_table() {
+            columns.push(ColumnMetadata::new("geometry", columns.len(), ColumnType::Geometry)?);
+        }
         Ok(Schema::new(value.name(), columns)?)
     }
 }
@@ -535,7 +535,7 @@ async fn get_service_count(
     url: &Url,
 ) -> BulkDataResult<CountQueryResponse> {
     let count_url = Url::parse_with_params(
-        url.join("/query")?.as_str(),
+        format!("{}/query", url).as_str(),
         [("where", "1=1"), ("returnCountOnly", "true"), ("f", "json")],
     )?;
     let count_json: CountQueryResponse = client.get(count_url).send().await?.json().await?;
@@ -611,7 +611,7 @@ async fn get_object_ids_response(
     url: &Url,
 ) -> BulkDataResult<ObjectIdsResponse> {
     let max_min_url = Url::parse_with_params(
-        url.join("/query")?.as_str(),
+        format!("{}/query", url).as_str(),
         [("where", "1=1"), ("returnIdsOnly", "true"), ("f", "json")],
     )?;
     let max_min_json = client.get(max_min_url).send().await?.json().await?;
@@ -636,7 +636,7 @@ async fn get_service_max_min_stats(
 ) -> BulkDataResult<Option<(i32, i32)>> {
     let out_statistics = out_statistics_parameter(oid_field_name);
     let max_min_url = Url::parse_with_params(
-        url.join("/query")?.as_str(),
+        format!("{}/query", url).as_str(),
         [("outStatistics", out_statistics.as_str()), ("f", "json")],
     )?;
     let max_min_json: StatisticsResponse = client.get(max_min_url).send().await?.json().await?;
