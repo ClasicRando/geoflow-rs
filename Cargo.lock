@@ -1334,11 +1334,13 @@ dependencies = [
  "reqwest",
  "rocket",
  "serde",
+ "serde-aux",
  "serde_json",
  "shapefile",
  "sqlx",
  "tempfile",
  "tokio",
+ "url",
  "wkb",
  "wkt",
  "workflow_engine",
@@ -3136,6 +3138,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0f747710de3dcd43b88c9168773254e809d8ddbdf9653b84e2554ab219f17860"
 dependencies = [
  "serde_derive",
+]
+
+[[package]]
+name = "serde-aux"
+version = "4.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c599b3fd89a75e0c18d6d2be693ddb12cccaf771db4ff9e39097104808a014c0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

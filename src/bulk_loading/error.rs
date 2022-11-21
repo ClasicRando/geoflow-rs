@@ -1,4 +1,5 @@
 use polars::prelude::PolarsError;
+use reqwest::StatusCode;
 use std::fmt::Display;
 
 pub type BulkDataResult<T> = Result<T, BulkDataError>;
@@ -17,6 +18,9 @@ pub enum BulkDataError {
     Wkb(wkb::WKBReadError),
     Avro(avro_rs::Error),
     Json(serde_json::Error),
+    Reqwest(reqwest::Error),
+    URLParse(url::ParseError),
+    ArcGis(String, StatusCode),
 }
 
 impl std::error::Error for BulkDataError {}
@@ -36,6 +40,13 @@ impl Display for BulkDataError {
             Self::Wkb(error) => write!(f, "WKB Error\n{:?}", error),
             Self::Avro(error) => write!(f, "Avro Error\n{:?}", error),
             Self::Json(error) => write!(f, "JSON Error\n{:?}", error),
+            Self::Reqwest(error) => write!(f, "Reqwest Error\n{:?}", error),
+            Self::URLParse(error) => write!(f, "URL Parse Error\n{:?}", error),
+            Self::ArcGis(query, status_code) => write!(
+                f,
+                "Error while running query \"{}\", status: {}",
+                query, status_code
+            ),
         }
     }
 }
@@ -127,5 +138,23 @@ impl From<avro_rs::Error> for BulkDataError {
 impl From<serde_json::Error> for BulkDataError {
     fn from(error: serde_json::Error) -> Self {
         Self::Json(error)
+    }
+}
+
+impl From<reqwest::Error> for BulkDataError {
+    fn from(error: reqwest::Error) -> Self {
+        Self::Reqwest(error)
+    }
+}
+
+impl From<url::ParseError> for BulkDataError {
+    fn from(error: url::ParseError) -> Self {
+        Self::URLParse(error)
+    }
+}
+
+impl From<(&str, StatusCode)> for BulkDataError {
+    fn from(tuple: (&str, StatusCode)) -> Self {
+        Self::ArcGis(tuple.0.to_owned(), tuple.1)
     }
 }

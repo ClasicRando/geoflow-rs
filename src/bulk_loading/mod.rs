@@ -10,3 +10,4 @@ pub mod ipc;
 pub mod parquet;
 pub mod analyze;
 pub mod avro;
+pub mod arcgis;
