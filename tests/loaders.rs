@@ -1,6 +1,7 @@
 use geoflow_rs::{
     bulk_loading::{
         analyze::{ColumnType, SchemaAnalyzer},
+        arcgis::ArcGisDataOptions,
         delimited::DelimitedDataOptions,
         excel::ExcelOptions,
         geo_json::GeoJsonOptions,
@@ -542,6 +543,80 @@ async fn ipc_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 
     assert_eq!(299_u64, records_loaded);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn arcgis_data_loading() -> Result<(), Box<dyn std::error::Error>> {
+    //https://arcgis.metc.state.mn.us/server/rest/services/ESWastewater/RainGaugeSites/FeatureServer
+    let db_schema = "geoflow";
+    let expected_table_name = "raingaugesites";
+    let expected_column_names = [
+        ("objectid", ColumnType::Integer),
+        ("uniqueid", ColumnType::Integer),
+        ("featurelabel", ColumnType::Text),
+        ("sitename", ColumnType::Text),
+        ("featurestatus", ColumnType::Text),
+        ("featureowner", ColumnType::Text),
+        ("wwtp", ColumnType::Text),
+        ("locationdescription", ColumnType::Text),
+        ("address", ColumnType::Text),
+        ("ctu_name", ColumnType::Text),
+        ("co_name", ColumnType::Text),
+        ("zip", ColumnType::Integer),
+        ("notes", ColumnType::Text),
+        ("gpsdate", ColumnType::Timestamp),
+        ("gpsaccuracy", ColumnType::DoublePrecision),
+        ("gpsdatasource", ColumnType::Text),
+        ("gpsnorthing", ColumnType::DoublePrecision),
+        ("gpseasting", ColumnType::DoublePrecision),
+        ("yearopened", ColumnType::Integer),
+        ("yearclosed", ColumnType::Integer),
+        ("datasource", ColumnType::Text),
+        ("datasourcedate", ColumnType::Timestamp),
+        ("assetid", ColumnType::Text),
+        ("parentid", ColumnType::Text),
+        ("eamasseturl", ColumnType::Text),
+        ("majorwatershed", ColumnType::Text),
+        ("secondarywatershed", ColumnType::Text),
+        ("created_user", ColumnType::Text),
+        ("created_date", ColumnType::Timestamp),
+        ("last_edited_user", ColumnType::Text),
+        ("last_edited_date", ColumnType::Timestamp),
+        ("globalid", ColumnType::UUID),
+        ("geometry", ColumnType::Geometry),
+    ];
+
+    let options = ArcGisDataOptions::new("https://arcgis.metc.state.mn.us/server/rest/services/ESWastewater/RainGaugeSites/FeatureServer/0")?;
+    let analyzer = SchemaAnalyzer::from_arc_gis(options);
+    let schema = analyzer.schema().await?;
+
+    assert_eq!(expected_table_name, schema.table_name());
+
+    let fields = schema.columns();
+    assert_eq!(expected_column_names.len(), fields.len());
+    for (ex_field, field) in expected_column_names.iter().zip(fields) {
+        assert_eq!(ex_field.0, field.name());
+        assert_eq!(&ex_field.1, field.column_type(), "field = {}", ex_field.0);
+    }
+
+    let pool = create_db_pool().await?;
+    sqlx::query(&format!(
+        "drop table if exists {}.{}",
+        db_schema,
+        schema.table_name()
+    ))
+    .execute(&pool)
+    .await?;
+    let create_statement = schema.create_statement(db_schema);
+    sqlx::query(&create_statement).execute(&pool).await?;
+
+    let loader = analyzer.loader();
+    let copy_options = schema.copy_options(db_schema);
+    let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
+
+    assert_eq!(26_u64, records_loaded);
 
     Ok(())
 }
