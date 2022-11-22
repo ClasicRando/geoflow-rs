@@ -6,6 +6,7 @@ use serde_json::{Map, Value};
 
 static MAX_RETRY: i32 = 5;
 
+#[derive(Debug, PartialEq)]
 pub enum QueryFormat {
     GeoJSON,
     JSON,
@@ -140,4 +141,44 @@ pub async fn fetch_query(
 ) -> BulkDataResult<FeatureCollection> {
     let feature_collection = loop_until_successful(client, query, query_format).await?;
     Ok(feature_collection)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::QueryFormat;
+
+    #[test]
+    fn query_format_as_str() {
+        let query_format_geo_json = QueryFormat::GeoJSON;
+        let query_format_json = QueryFormat::JSON;
+        let query_format_test = QueryFormat::NotSupported(String::from("test"));
+
+        assert_eq!("geojson", query_format_geo_json.as_str());
+        assert_eq!("json", query_format_json.as_str());
+        assert_eq!("test", query_format_test.as_str());
+    }
+
+    #[test]
+    fn query_format_from_str() {
+        let geo_json = "geoJSON";
+        let json = "JSON";
+        let other = "PBF";
+        let multi_geo_json = "JSON, PBF, geoJSON";
+        let multi_json = "PBF, JSON";
+        let multi_other = "PBF, KMZ";
+
+        let query_format_geo_json = QueryFormat::from(geo_json);
+        let query_format_json = QueryFormat::from(json);
+        let query_format_other = QueryFormat::from(other);
+        let query_format_multi_geo_json = QueryFormat::from(multi_geo_json);
+        let query_format_multi_json = QueryFormat::from(multi_json);
+        let query_format_multi_other = QueryFormat::from(multi_other);
+
+        assert_eq!(QueryFormat::GeoJSON, query_format_geo_json);
+        assert_eq!(QueryFormat::JSON, query_format_json);
+        assert_eq!(QueryFormat::NotSupported(other.to_lowercase()), query_format_other);
+        assert_eq!(QueryFormat::GeoJSON, query_format_multi_geo_json);
+        assert_eq!(QueryFormat::JSON, query_format_multi_json);
+        assert_eq!(QueryFormat::NotSupported(other.to_lowercase()), query_format_multi_other);
+    }
 }

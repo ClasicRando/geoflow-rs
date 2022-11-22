@@ -162,3 +162,76 @@ impl DataParser for ArcGisRestParser {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use serde_json::Value;
+
+    use crate::bulk_loading::{error::BulkDataResult, arcgis::metadata::ServiceField};
+
+    use super::{metadata::RestServiceFieldType, map_arcgis_value};
+
+    static FIELD_NAME: &str = "test";
+
+    #[test]
+    fn map_arcgis_value_should_fail_when_type_is_blob() {
+        let typ = RestServiceFieldType::Blob;
+        let field = ServiceField::new(FIELD_NAME, typ);
+        let value = Value::Null;
+
+        let result = map_arcgis_value(&value, &field);
+        assert!(result.is_err())
+    }
+
+    #[test]
+    fn map_arcgis_value_should_fail_when_type_is_geometry() {
+        let typ = RestServiceFieldType::Geometry;
+        let field = ServiceField::new(FIELD_NAME, typ);
+        let value = Value::Null;
+
+        let result = map_arcgis_value(&value, &field);
+        assert!(result.is_err())
+    }
+
+    #[test]
+    fn map_arcgis_value_should_fail_when_type_is_raster() {
+        let typ = RestServiceFieldType::Raster;
+        let field = ServiceField::new(FIELD_NAME, typ);
+        let value = Value::Null;
+
+        let result = map_arcgis_value(&value, &field);
+        assert!(result.is_err())
+    }
+
+    #[test]
+    fn map_arcgis_value_should_return_when_type_is_date_and_value_is_number() -> BulkDataResult<()> {
+        let typ = RestServiceFieldType::Date;
+        let field = ServiceField::new(FIELD_NAME, typ);
+        let value = Value::Number(1000.into());
+
+        let result = map_arcgis_value(&value, &field)?;
+        assert_eq!("1970-01-01 00:00:01", &result);
+        Ok(())
+    }
+
+    #[test]
+    fn map_arcgis_value_should_return_empty_string_when_type_is_date_and_value_is_null() -> BulkDataResult<()> {
+        let typ = RestServiceFieldType::Date;
+        let field = ServiceField::new(FIELD_NAME, typ);
+        let value = Value::Null;
+
+        let result = map_arcgis_value(&value, &field)?;
+        assert_eq!("", &result);
+        Ok(())
+    }
+
+    #[test]
+    fn map_arcgis_value_should_fail_when_type_is_date_and_value_not_number() {
+        let typ = RestServiceFieldType::Date;
+        let field = ServiceField::new(FIELD_NAME, typ);
+        let value = Value::String(String::new());
+
+        let result = map_arcgis_value(&value, &field);
+        assert!(result.is_err())
+    }
+}
