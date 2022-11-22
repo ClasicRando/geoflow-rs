@@ -46,8 +46,6 @@ pub enum RestServiceFieldType {
     Date,
     #[serde(alias = "esriFieldTypeDouble")]
     Double,
-    #[serde(alias = "esriFieldTypeFloat")]
-    Float,
     #[serde(alias = "esriFieldTypeGeometry")]
     Geometry,
     #[serde(alias = "esriFieldTypeGlobalID")]
@@ -78,7 +76,6 @@ impl TryFrom<&RestServiceFieldType> for ColumnType {
             RestServiceFieldType::Blob => return Err("Blob type fields are not supported".into()),
             RestServiceFieldType::Date => ColumnType::Timestamp,
             RestServiceFieldType::Double => ColumnType::DoublePrecision,
-            RestServiceFieldType::Float => ColumnType::Real,
             RestServiceFieldType::Geometry => {
                 return Err("Geometry type fields are not supported".into())
             }
