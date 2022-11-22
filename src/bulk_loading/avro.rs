@@ -117,6 +117,25 @@ fn convert_timestamp_secs_to_string(value: i64) -> String {
     format!("{}", dt.format("%Y-%m-%d %H:%M:%S"))
 }
 
+#[inline]
+fn small_int_array_literal(bytes: Vec<u8>) -> BulkDataResult<String> {
+    let mut out = String::from('{');
+    if bytes.len() > 0 {
+        write!(out, "{}", bytes[0])?;
+        for byte in bytes.iter().skip(1) {
+            write!(out, ",{}", byte)?;
+        }
+    }
+    out.push('}');
+    Ok(out)
+}
+
+#[inline]
+fn serialize_to_json_value(avro_value: Value) -> BulkDataResult<String> {
+    let value: JsonValue = avro_value.try_into()?;
+    Ok(serde_json::to_string(&value)?)
+}
+
 fn map_avro_value(value: Value) -> BulkDataResult<String> {
     Ok(match value {
         Value::Null => String::new(),
@@ -125,51 +144,18 @@ fn map_avro_value(value: Value) -> BulkDataResult<String> {
         Value::Long(l) => l.to_string(),
         Value::Float(f) => f.to_string(),
         Value::Double(d) => d.to_string(),
-        Value::Bytes(b) => {
-            let mut out = String::from('{');
-            for byte in b {
-                write!(out, "{}", byte)?;
-            }
-            out.push('}');
-            out
-        }
+        Value::Bytes(b) => small_int_array_literal(b)?,
         Value::String(s) => s.to_owned(),
-        Value::Fixed(_, b) => {
-            let mut out = String::from('{');
-            for byte in b {
-                write!(out, "{}", byte)?;
-            }
-            out.push('}');
-            out
-        }
+        Value::Fixed(_, b) => small_int_array_literal(b)?,
         Value::Enum(_, n) => n.to_owned(),
         Value::Union(b) => return map_avro_value(*b),
-        Value::Array(_) => {
-            let arr: JsonValue = value.try_into()?;
-            serde_json::to_string(&arr)?
-        }
-        Value::Map(_) => {
-            let obj: JsonValue = value.try_into()?;
-            serde_json::to_string(&obj)?
-        }
-        Value::Record(_) => {
-            let obj: JsonValue = value.try_into()?;
-            serde_json::to_string(&obj)?
-        }
+        Value::Record(_) | Value::Map(_) | Value::Array(_) => serialize_to_json_value(value)?,
         Value::Date(d) => {
             static NUM_SECONDS_IN_DAY: i64 = 60 * 60 * 24;
             let dt = Utc.timestamp(d as i64 * NUM_SECONDS_IN_DAY, 0).date();
             format!("{}", dt.format("%Y-%m-%d"))
         }
-        Value::Decimal(ref d) => {
-            let bytes: Vec<u8> = d.try_into()?;
-            let mut out = String::from('{');
-            for byte in bytes {
-                write!(out, "{}", byte)?;
-            }
-            out.push('}');
-            out
-        }
+        Value::Decimal(ref d) => small_int_array_literal(d.try_into()?)?,
         Value::TimeMillis(t) => convert_time_nano_secs_to_string(t as i64 * 1_000_000)?,
         Value::TimeMicros(t) => convert_time_nano_secs_to_string(t as i64 * 1_000)?,
         Value::TimestampMillis(t) => convert_timestamp_secs_to_string(t as i64 / 1_000),
