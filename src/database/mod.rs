@@ -10,10 +10,10 @@ pub fn db_options() -> PgConnectOptions {
     let we_db_user = env!("GF_USER");
     let we_db_password = env!("GF_PASSWORD");
     PgConnectOptions::new()
-        .host(&we_host_address)
-        .database(&we_db_name)
-        .username(&we_db_user)
-        .password(&we_db_password)
+        .host(we_host_address)
+        .database(we_db_name)
+        .username(we_db_user)
+        .password(we_db_password)
 }
 
 pub async fn create_db_pool() -> Result<PgPool, Error> {

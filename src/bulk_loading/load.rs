@@ -25,7 +25,7 @@ impl CopyOptions {
 
     pub fn from_vec(table_name: String, columns: Vec<String>) -> Self {
         Self {
-            table_name: table_name,
+            table_name,
             columns,
         }
     }
@@ -61,16 +61,13 @@ pub fn csv_result_iter_to_string<I: Iterator<Item = BulkDataResult<String>>>(
 }
 
 pub fn csv_iter_to_string<I: Iterator<Item = String>>(csv_iter: I) -> String {
-    let mut csv_data = csv_iter.map(|s| escape_csv_string(s)).join(",");
+    let mut csv_data = csv_iter.map(escape_csv_string).join(",");
     csv_data.push('\n');
     csv_data
 }
 
 pub fn csv_values_to_string<I: IntoIterator<Item = String>>(csv_values: I) -> String {
-    let mut csv_data = csv_values
-        .into_iter()
-        .map(|s| escape_csv_string(s))
-        .join(",");
+    let mut csv_data = csv_values.into_iter().map(escape_csv_string).join(",");
     csv_data.push('\n');
     csv_data
 }

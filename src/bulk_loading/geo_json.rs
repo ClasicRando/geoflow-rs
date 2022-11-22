@@ -83,7 +83,7 @@ impl SchemaParser for GeoJsonSchemaParser {
         }
         let mut columns: Vec<ColumnMetadata> = columns
             .into_iter()
-            .map(|tup| ColumnMetadata::from_tuple(tup))
+            .map(ColumnMetadata::from_tuple)
             .collect::<BulkDataResult<_>>()?;
         columns.push(ColumnMetadata::new(
             "geometry",

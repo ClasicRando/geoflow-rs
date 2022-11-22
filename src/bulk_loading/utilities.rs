@@ -4,7 +4,7 @@ use tokio::sync::mpsc::{error::SendError, Sender};
 use super::{
     analyze::{ColumnMetadata, ColumnType, Schema},
     error::BulkDataResult,
-    load::csv_values_to_string,
+    load::csv_result_iter_to_string,
 };
 
 pub fn escape_csv_string(csv_string: String) -> String {
@@ -12,7 +12,7 @@ pub fn escape_csv_string(csv_string: String) -> String {
         .chars()
         .any(|c| c == '"' || c == ',' || c == '\n' || c == '\r')
     {
-        format!("\"{}\"", csv_string.replace("\"", "\"\""))
+        format!("\"{}\"", csv_string.replace('"', "\"\""))
     } else {
         csv_string
     }
@@ -68,7 +68,7 @@ pub fn schema_from_dataframe(file_name: String, dataframe: DataFrame) -> BulkDat
         .enumerate()
         .map(|(i, (field, typ))| ColumnMetadata::new(field, i, typ.into()))
         .collect::<BulkDataResult<_>>()?;
-    Ok(Schema::new(&file_name, columns)?)
+    Schema::new(&file_name, columns)
 }
 
 pub async fn spool_dataframe_records(
@@ -76,23 +76,15 @@ pub async fn spool_dataframe_records(
     record_channel: &mut Sender<BulkDataResult<String>>,
 ) -> Option<SendError<BulkDataResult<String>>> {
     let mut iters = dataframe.iter().map(|s| s.iter()).collect::<Vec<_>>();
-    for i in 0..dataframe.height() {
-        let row_data = iters
-            .iter_mut()
-            .map(|iter| {
-                iter.next()
-                    .ok_or("Dataframe value was not found. This should never happen".to_string())
-                    .map(|value| map_formatted_value(value))
-            })
-            .collect::<Result<Vec<String>, _>>();
-        let Ok(csv_data) = row_data else {
-            return record_channel
-                .send(Err(format!("Could not read record {}", (i + 1)).into()))
-                .await
-                .err();
-        };
+    for _ in 0..dataframe.height() {
+        let row_data = iters.iter_mut().map(|iter| {
+            let Some(value) = iter.next() else {
+                    return Err("Dataframe value was not found. This should never happen".into())
+                };
+            Ok(map_formatted_value(value))
+        });
         let result = record_channel
-            .send(Ok(csv_values_to_string(csv_data)))
+            .send(csv_result_iter_to_string(row_data))
             .await;
         if let Err(error) = result {
             return Some(error);
@@ -202,7 +194,7 @@ mod tests {
     #[test]
     fn escape_csv_string_should_return_qualified_value_when_quote_present() {
         let string = String::from("This is \"a\" test");
-        let expected = format!("\"{}\"", string.replace("\"", "\"\""));
+        let expected = format!("\"{}\"", string.replace('"', "\"\""));
 
         let actual = escape_csv_string(string);
 
@@ -224,7 +216,7 @@ mod tests {
         let string = String::from("This is a\n test");
         let expected = format!("\"{}\"", string);
 
-        let actual = escape_csv_string(string.to_owned());
+        let actual = escape_csv_string(string);
 
         assert_eq!(expected, actual);
     }

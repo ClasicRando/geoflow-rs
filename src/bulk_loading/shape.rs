@@ -93,7 +93,7 @@ impl SchemaParser for ShapeDataSchemaParser {
                 let Some(field_value) = record.get(field_name) else {
                     return Err(format!("Could not find value for field {}", field_name).into())
                 };
-                ColumnMetadata::new(field_name, index, column_type_from_value(&field_value))
+                ColumnMetadata::new(field_name, index, column_type_from_value(field_value))
             })
             .collect::<BulkDataResult<_>>()?;
         columns.push(ColumnMetadata::new(
@@ -119,7 +119,7 @@ fn map_field_value(value: FieldValue) -> String {
         FieldValue::Date(date) => date
             .map(|d| format!("{}-{:02}-{:02}", d.year(), d.month(), d.day()))
             .unwrap_or_default(),
-        FieldValue::Float(f) => f.map(|f| f.to_string()).unwrap_or("".into()),
+        FieldValue::Float(f) => f.map(|f| f.to_string()).unwrap_or_else(String::new),
         FieldValue::Integer(i) => i.to_string(),
         FieldValue::Currency(c) => format!("${}", c),
         FieldValue::DateTime(dt) => {

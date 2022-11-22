@@ -38,7 +38,7 @@ fn clean_sql_name(name: &str) -> Option<String> {
     Some(name.to_lowercase())
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ColumnType {
     Text,
     Boolean,
@@ -94,14 +94,14 @@ pub struct ColumnMetadata {
 
 impl ColumnMetadata {
     pub fn new(name: &str, index: usize, column_type: ColumnType) -> BulkDataResult<Self> {
-        if SQL_NAME_REGEX.is_match(&name) {
+        if SQL_NAME_REGEX.is_match(name) {
             return Ok(Self {
                 name: name.to_lowercase(),
                 index,
                 column_type,
             });
         }
-        let Some(column_name) = clean_sql_name(&name) else {
+        let Some(column_name) = clean_sql_name(name) else {
             return Err(format!("Column name for index {} was empty after cleaning", index).into());
         };
         Ok(Self {

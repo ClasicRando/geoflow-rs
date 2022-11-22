@@ -38,7 +38,7 @@ impl RestServiceGeometryType {
     }
 }
 
-#[derive(Clone, PartialEq, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Deserialize)]
 pub enum RestServiceFieldType {
     #[serde(alias = "esriFieldTypeBlob")]
     Blob,
@@ -116,7 +116,7 @@ pub enum FieldDomain {
     Inherited,
 }
 
-fn coded_to_map(coded_values: &Vec<CodedValue>) -> HashMap<String, String> {
+fn coded_to_map(coded_values: &[CodedValue]) -> HashMap<String, String> {
     coded_values
         .iter()
         .map(|coded_value| (coded_value.code.to_owned(), coded_value.name.to_owned()))
@@ -253,7 +253,7 @@ impl<'m> QueryIterator<'m> {
             };
             Ok(Self::OID {
                 query_url,
-                oid_field_name: &oid_field_name,
+                oid_field_name,
                 min_oid,
                 scrape_count,
                 fields,
@@ -377,7 +377,7 @@ impl<'m> Iterator for QueryIterator<'m> {
             } => {
                 let result_offset = format!("{}", *query_index * *scrape_count);
                 url_params.push(("resultOffset", &result_offset));
-                url_params.push(("resultRecordCount", &result_count));
+                url_params.push(("resultRecordCount", result_count));
                 Url::parse_with_params(self.query_url().as_str(), url_params)
             }
         };
@@ -501,7 +501,7 @@ impl<'u> ArcGisRestMetadata<'u> {
 
         let rest_metadata = Self {
             url,
-            json_metadata: json_metadata,
+            json_metadata,
             query_format: format,
             source_count: source_count.count,
             max_min_oid,
@@ -522,9 +522,13 @@ impl<'u> TryFrom<ArcGisRestMetadata<'u>> for Schema {
             })
             .collect::<BulkDataResult<_>>()?;
         if !value.is_table() {
-            columns.push(ColumnMetadata::new("geometry", columns.len(), ColumnType::Geometry)?);
+            columns.push(ColumnMetadata::new(
+                "geometry",
+                columns.len(),
+                ColumnType::Geometry,
+            )?);
         }
-        Ok(Schema::new(value.name(), columns)?)
+        Schema::new(value.name(), columns)
     }
 }
 
@@ -596,9 +600,9 @@ async fn get_service_max_min(
     stats_enabled: bool,
 ) -> BulkDataResult<Option<(i32, i32)>> {
     let result = if stats_enabled {
-        get_service_max_min_stats(&client, url, oid_field_name).await?
+        get_service_max_min_stats(client, url, oid_field_name).await?
     } else {
-        get_service_max_min_oid(&client, url).await?
+        get_service_max_min_oid(client, url).await?
     };
     Ok(result)
 }
@@ -618,7 +622,7 @@ async fn get_object_ids_response(
         [("where", "1=1"), ("returnIdsOnly", "true"), ("f", "json")],
     )?;
     let max_min_json = client.get(max_min_url).send().await?.json().await?;
-    return Ok(max_min_json);
+    Ok(max_min_json)
 }
 
 async fn get_service_max_min_oid(

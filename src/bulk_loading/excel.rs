@@ -144,7 +144,7 @@ impl DataParser for ExcelDataParser {
         for (row_num, row) in rows.enumerate() {
             let row_data = row
                 .iter()
-                .map(|value| map_excel_value(value))
+                .map(map_excel_value)
                 .collect::<Result<Vec<String>, _>>();
             let Ok(row_values) = row_data else {
                 return record_channel

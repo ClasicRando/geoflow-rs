@@ -108,7 +108,7 @@ fn convert_time_nano_secs_to_string(value: i64) -> BulkDataResult<String> {
     let secs = value - nano_overflow;
     NaiveTime::from_num_seconds_from_midnight_opt(secs as u32, nano_overflow as u32)
         .map(|t| format!("{}", t.format("%H:%M:%S")))
-        .ok_or(format!("Could not convert {} ns to Time", value).into())
+        .ok_or_else(|| format!("Could not convert {} ns to Time", value).into())
 }
 
 #[inline]
@@ -120,7 +120,7 @@ fn convert_timestamp_secs_to_string(value: i64) -> String {
 #[inline]
 fn small_int_array_literal(bytes: Vec<u8>) -> BulkDataResult<String> {
     let mut out = String::from('{');
-    if bytes.len() > 0 {
+    if !bytes.is_empty() {
         write!(out, "{}", bytes[0])?;
         for byte in bytes.iter().skip(1) {
             write!(out, ",{}", byte)?;
@@ -145,9 +145,9 @@ fn map_avro_value(value: Value) -> BulkDataResult<String> {
         Value::Float(f) => f.to_string(),
         Value::Double(d) => d.to_string(),
         Value::Bytes(b) => small_int_array_literal(b)?,
-        Value::String(s) => s.to_owned(),
+        Value::String(s) => s,
         Value::Fixed(_, b) => small_int_array_literal(b)?,
-        Value::Enum(_, n) => n.to_owned(),
+        Value::Enum(_, n) => n,
         Value::Union(b) => return map_avro_value(*b),
         Value::Record(_) | Value::Map(_) | Value::Array(_) => serialize_to_json_value(value)?,
         Value::Date(d) => {

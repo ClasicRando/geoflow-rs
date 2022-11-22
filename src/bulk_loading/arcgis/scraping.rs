@@ -6,7 +6,7 @@ use serde_json::{Map, Value};
 
 static MAX_RETRY: i32 = 5;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum QueryFormat {
     GeoJSON,
     JSON,
@@ -52,7 +52,7 @@ impl From<&str> for QueryFormat {
         } else if formats.contains("json") {
             Self::JSON
         } else {
-            let format = match formats.split(",").next() {
+            let format = match formats.split(',').next() {
                 Some(f) => f.to_owned(),
                 None => formats,
             };
