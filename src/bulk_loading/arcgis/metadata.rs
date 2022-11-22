@@ -132,6 +132,14 @@ pub struct ServiceField {
 }
 
 impl ServiceField {
+    pub fn new(name: &str, field_type: RestServiceFieldType) -> Self {
+        Self {
+            name: name.to_owned(),
+            field_type,
+            domain: None,
+        }
+    }
+
     #[inline]
     pub fn name(&self) -> &str {
         &self.name
@@ -141,9 +149,7 @@ impl ServiceField {
     pub fn field_type(&self) -> &RestServiceFieldType {
         &self.field_type
     }
-}
 
-impl ServiceField {
     pub fn coded_values(&self) -> Option<HashMap<String, String>> {
         if let Some(FieldDomain::Coded { coded_values, .. }) = &self.domain {
             Some(coded_to_map(coded_values))
