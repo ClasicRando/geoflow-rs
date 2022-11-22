@@ -231,3 +231,296 @@ impl DataParser for AvroFileParser {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use avro_rs::{
+        schema::{Name, RecordField, RecordFieldOrder},
+        Schema as AvroSchema,
+    };
+
+    use crate::bulk_loading::{analyze::ColumnType, error::BulkDataResult};
+
+    use super::avro_field_to_column_type;
+
+    fn record_field_for_type(schema: AvroSchema) -> RecordField {
+        RecordField {
+            name: String::from("test"),
+            doc: None,
+            default: None,
+            schema,
+            order: RecordFieldOrder::Ignore,
+            position: 1,
+        }
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_fail_when_fail_type() -> BulkDataResult<()> {
+        let schema = AvroSchema::Null;
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field);
+
+        assert!(column_type.is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_boolean_when_boolean_type() -> BulkDataResult<()> {
+        let schema = AvroSchema::Boolean;
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::Boolean, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_integer_when_int_type() -> BulkDataResult<()> {
+        let schema = AvroSchema::Int;
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::Integer, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_bigint_when_long_type() -> BulkDataResult<()> {
+        let schema = AvroSchema::Long;
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::BigInt, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_real_when_float_type() -> BulkDataResult<()> {
+        let schema = AvroSchema::Float;
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::Real, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_double_precision_when_double_type(
+    ) -> BulkDataResult<()> {
+        let schema = AvroSchema::Double;
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::DoublePrecision, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_smallint_array_when_bytes_type() -> BulkDataResult<()>
+    {
+        let schema = AvroSchema::Bytes;
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::SmallIntArray, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_json_when_array_type() -> BulkDataResult<()> {
+        let schema = AvroSchema::Array(Box::new(AvroSchema::Int));
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::Json, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_json_when_map_type() -> BulkDataResult<()> {
+        let schema = AvroSchema::Map(Box::new(AvroSchema::Int));
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::Json, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    #[ignore = "Union schema cannot be created since it's crate private"]
+    fn avro_field_to_column_type_should_return_json_when_union_type() -> BulkDataResult<()> {
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_json_when_record_type() -> BulkDataResult<()> {
+        let schema = AvroSchema::Record {
+            name: Name::new("Test"),
+            doc: None,
+            fields: vec![record_field_for_type(AvroSchema::Int)],
+            lookup: HashMap::new(),
+        };
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::Json, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_text_when_enum_type() -> BulkDataResult<()> {
+        let schema = AvroSchema::Enum {
+            name: Name::new("Test"),
+            doc: None,
+            symbols: vec![],
+        };
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::Text, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_smallint_array_when_fixed_type() -> BulkDataResult<()>
+    {
+        let schema = AvroSchema::Fixed {
+            name: Name::new("Test"),
+            size: 0,
+        };
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::SmallIntArray, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_smallint_array_when_decimal_type(
+    ) -> BulkDataResult<()> {
+        let schema = AvroSchema::Decimal {
+            precision: 0,
+            scale: 0,
+            inner: Box::new(AvroSchema::Int),
+        };
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::SmallIntArray, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_text_when_uuid_type() -> BulkDataResult<()> {
+        let schema = AvroSchema::Uuid;
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::UUID, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_date_when_date_type() -> BulkDataResult<()> {
+        let schema = AvroSchema::Date;
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::Date, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_time_when_time_milli_type() -> BulkDataResult<()> {
+        let schema = AvroSchema::TimeMillis;
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::Time, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_time_when_time_micro_type() -> BulkDataResult<()> {
+        let schema = AvroSchema::TimeMicros;
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::Time, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_timestamp_when_timestamp_millis_type(
+    ) -> BulkDataResult<()> {
+        let schema = AvroSchema::TimestampMillis;
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::Timestamp, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_timestamp_when_timestamp_micros_type(
+    ) -> BulkDataResult<()> {
+        let schema = AvroSchema::TimestampMicros;
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::Timestamp, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn avro_field_to_column_type_should_return_text_when_duration_type() -> BulkDataResult<()> {
+        let schema = AvroSchema::Duration;
+        let field = record_field_for_type(schema);
+
+        let column_type = avro_field_to_column_type(&field)?;
+
+        assert_eq!(ColumnType::Text, column_type);
+
+        Ok(())
+    }
+}
