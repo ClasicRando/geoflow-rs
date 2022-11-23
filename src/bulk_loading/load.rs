@@ -9,6 +9,7 @@ use super::{
 };
 
 pub type BulkLoadResult = Result<u64, BulkDataError>;
+pub type RecordSpoolResult = Option<SendError<BulkDataResult<String>>>;
 
 pub struct CopyOptions {
     table_name: String,
@@ -47,27 +48,23 @@ impl CopyOptions {
 }
 
 pub fn csv_result_iter_to_string<I: Iterator<Item = BulkDataResult<String>>>(
-    csv_iter: I,
+    mut csv_iter: I,
 ) -> BulkDataResult<String> {
-    let mut csv_data = String::new();
+    let Some(first_value) = csv_iter.next() else {
+        return Ok(String::new())
+    };
+    let mut csv_data = first_value?;
     for s in csv_iter {
+        csv_data.push(',');
         let csv_value = s?;
         csv_data.push_str(&escape_csv_string(csv_value));
-        csv_data.push(',');
     }
-    csv_data.pop();
     csv_data.push('\n');
     Ok(csv_data)
 }
 
 pub fn csv_iter_to_string<I: Iterator<Item = String>>(csv_iter: I) -> String {
     let mut csv_data = csv_iter.map(escape_csv_string).join(",");
-    csv_data.push('\n');
-    csv_data
-}
-
-pub fn csv_values_to_string<I: IntoIterator<Item = String>>(csv_values: I) -> String {
-    let mut csv_data = csv_values.into_iter().map(escape_csv_string).join(",");
     csv_data.push('\n');
     csv_data
 }
@@ -101,14 +98,12 @@ impl<P: DataParser + Send + Sync + 'static> DataLoader<P> {
         });
         let result = loop {
             match rx.recv().await {
-                Some(msg) => match msg {
-                    Ok(record) => {
-                        if let Err(error) = copy.send(record.as_bytes()).await {
-                            break Err(error.into());
-                        }
+                Some(Ok(record)) => {
+                    if let Err(error) = copy.send(record.as_bytes()).await {
+                        break Err(error.into());
                     }
-                    Err(error) => break Err(error),
-                },
+                }
+                Some(Err(error)) => break Err(error),
                 None => break Ok(()),
             }
         };

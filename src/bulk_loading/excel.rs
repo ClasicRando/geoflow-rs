@@ -4,9 +4,10 @@ use tokio::sync::mpsc::{error::SendError, Sender};
 
 use super::{
     analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
-    error::{BulkDataError, BulkDataResult},
-    load::{csv_values_to_string, DataParser, DataLoader},
+    error::BulkDataResult,
+    load::{csv_result_iter_to_string, DataLoader, DataParser},
     options::DataFileOptions,
+    utilities::send_error_message,
 };
 
 pub struct ExcelOptions {
@@ -96,7 +97,7 @@ pub fn map_excel_value(value: &DataType) -> BulkDataResult<String> {
                 .format("%Y-%m-%d %H:%M:%S");
             format!("{}", formatted_datetime)
         }
-        DataType::Error(e) => return Err(BulkDataError::Generic(format!("Cell error, {}", e))),
+        DataType::Error(e) => return Err(format!("Cell error, {}", e).into()),
         DataType::Empty => String::new(),
         _ => format!("{}", value),
     })
@@ -130,46 +131,37 @@ impl DataParser for ExcelDataParser {
         let header = match rows.next() {
             Some(row) => row,
             None => {
-                return record_channel
-                    .send(Err(format!(
-                        "Could not find a header row for excel file {:?}",
-                        self.0.file_path,
-                    )
-                    .into()))
-                    .await
-                    .err();
+                let message = format!(
+                    "Could not find a header row for excel file {:?}",
+                    self.0.file_path,
+                );
+                return send_error_message(record_channel, message).await;
             }
         };
         let header_size = header.len();
         for (row_num, row) in rows.enumerate() {
-            let row_data = row
-                .iter()
-                .map(map_excel_value)
-                .collect::<Result<Vec<String>, _>>();
-            let Ok(row_values) = row_data else {
-                return record_channel
-                    .send(Err(format!(
-                        "Excel row {} has cells that contain errors",
-                        row_num + 1
-                    ).into()))
-                    .await
-                    .err();
-            };
-            if row_values.len() != header_size {
-                return record_channel
-                    .send(Err(format!(
-                        "Excel row {} has {} values but expected {}",
-                        row_num + 1,
-                        row_values.len(),
-                        header_size
-                    )
-                    .into()))
-                    .await
-                    .err();
+            if row.len() != header_size {
+                let message = format!(
+                    "Excel row {} has {} values but expected {}",
+                    row_num + 1,
+                    row.len(),
+                    header_size
+                );
+                return send_error_message(record_channel, message).await;
             }
-            let result = record_channel
-                .send(Ok(csv_values_to_string(row_values)))
-                .await;
+            let csv_iter = row.iter().map(map_excel_value);
+            let csv_data = match csv_result_iter_to_string(csv_iter) {
+                Ok(d) => d,
+                Err(error) => {
+                    let message = format!(
+                        "Excel row {} has cell(s) contains an error: {}",
+                        row_num + 1,
+                        error,
+                    );
+                    return send_error_message(record_channel, message).await;
+                }
+            };
+            let result = record_channel.send(Ok(csv_data)).await;
             if let Err(error) = result {
                 return Some(error);
             }
@@ -181,6 +173,8 @@ impl DataParser for ExcelDataParser {
 #[cfg(test)]
 mod tests {
     use calamine::DataType;
+
+    use crate::bulk_loading::error::BulkDataError;
 
     use super::*;
 

@@ -3,8 +3,8 @@ use tokio::sync::mpsc::{error::SendError, Sender};
 
 use super::{
     analyze::{ColumnMetadata, ColumnType, Schema},
-    error::BulkDataResult,
-    load::csv_result_iter_to_string,
+    error::{BulkDataError, BulkDataResult},
+    load::{csv_result_iter_to_string, RecordSpoolResult},
 };
 
 pub fn escape_csv_string(csv_string: String) -> String {
@@ -16,6 +16,14 @@ pub fn escape_csv_string(csv_string: String) -> String {
     } else {
         csv_string
     }
+}
+
+#[inline]
+pub async fn send_error_message<E: Into<BulkDataError>>(
+    channel: &mut Sender<BulkDataResult<String>>,
+    error: E,
+) -> RecordSpoolResult {
+    channel.send(Err(error.into())).await.err()
 }
 
 pub fn map_formatted_value(value: AnyValue) -> String {

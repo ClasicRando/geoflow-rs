@@ -1,5 +1,6 @@
 use geo_types::Geometry;
-use geojson::{FeatureReader, JsonValue};
+use geojson::{Feature, FeatureReader, JsonValue};
+use serde_json::{Map, Value};
 use std::{fs::File, io::BufReader, path::PathBuf};
 use tokio::sync::mpsc::{error::SendError, Sender};
 use wkt::ToWkt;
@@ -7,8 +8,9 @@ use wkt::ToWkt;
 use super::{
     analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
-    load::{csv_values_to_string, DataParser, DataLoader},
+    load::{csv_iter_to_string, DataLoader, DataParser},
     options::DataFileOptions,
+    utilities::send_error_message,
 };
 
 fn column_type_from_value(value: &JsonValue) -> Option<ColumnType> {
@@ -110,6 +112,25 @@ pub fn map_json_value(value: &JsonValue) -> String {
     }
 }
 
+#[inline]
+pub fn feature_geometry_as_wkt(feature: &Feature) -> BulkDataResult<String> {
+    let Some(ref geom) = feature.geometry else {
+        return Ok(String::new())
+    };
+    match Geometry::<f64>::try_from(geom) {
+        Ok(g) => Ok(g.wkt_string()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn feature_properties_to_iter(
+    properties: &Map<String, Value>,
+) -> impl Iterator<Item = String> + '_ {
+    properties
+        .into_iter()
+        .map(|(_, value)| map_json_value(value))
+}
+
 pub struct GeoJsonParser(GeoJsonOptions);
 
 impl GeoJsonParser {
@@ -131,32 +152,28 @@ impl DataParser for GeoJsonParser {
         record_channel: &mut Sender<BulkDataResult<String>>,
     ) -> Option<SendError<BulkDataResult<String>>> {
         let options = self.0;
-        let Ok(reader) = options.reader() else {
-            return record_channel
-                .send(Err("Could not obtain reader {}".into()))
-                .await
-                .err();
+        let reader = match options.reader() {
+            Ok(r) => r,
+            Err(error) => return send_error_message(record_channel, error).await,
         };
-        for (i, feature) in reader.features().enumerate() {
-            let Ok(feature) = feature else {
-                return record_channel
-                    .send(Err(format!("Could not obtain feature {}", &i).into()))
-                    .await
-                    .err();
+        for feature in reader.features() {
+            let feature = match feature {
+                Ok(f) => f,
+                Err(error) => return send_error_message(record_channel, error).await,
             };
-            let geom = feature
-                .geometry
-                .as_ref()
-                .and_then(|g| Geometry::<f64>::try_from(g).ok())
-                .map(|g| g.wkt_string())
-                .unwrap_or_default();
-            let mut csv_row: Vec<String> = feature
-                .properties_iter()
-                .map(|(_, value)| map_json_value(value))
-                .collect();
-            csv_row.push(geom);
-            let csv_data = csv_values_to_string(csv_row);
-            let result = record_channel.send(Ok(csv_data)).await;
+            let geom = match feature_geometry_as_wkt(&feature) {
+                Ok(g) => g,
+                Err(error) => return send_error_message(record_channel, error).await,
+            };
+            let csv_row = match feature.properties {
+                Some(properies) => {
+                    let csv_iter =
+                        feature_properties_to_iter(&properies).chain(std::iter::once(geom));
+                    csv_iter_to_string(csv_iter)
+                }
+                None => String::new(),
+            };
+            let result = record_channel.send(Ok(csv_row)).await;
             if let Err(error) = result {
                 return Some(error);
             }

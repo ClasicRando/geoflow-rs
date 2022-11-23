@@ -5,20 +5,20 @@ use self::{
     metadata::{ArcGisRestMetadata, RestServiceFieldType, ServiceField},
     scraping::fetch_query,
 };
-use super::load::csv_values_to_string;
+use super::load::csv_result_iter_to_string;
 use crate::bulk_loading::{
     analyze::{Schema, SchemaParser},
     error::BulkDataResult,
+    geo_json::feature_geometry_as_wkt,
     load::{DataLoader, DataParser},
     options::DataFileOptions,
+    utilities::send_error_message,
 };
-use chrono::{Utc, TimeZone};
-use geo_types::Geometry;
+use chrono::{TimeZone, Utc};
 use reqwest::Url;
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::collections::HashMap;
 use tokio::sync::mpsc::{error::SendError, Sender};
-use wkt::ToWkt;
 
 pub struct ArcGisDataOptions {
     url: Url,
@@ -69,23 +69,37 @@ impl SchemaParser for ArcGisRestSchemaParser {
 fn map_arcgis_value(value: &Value, field: &ServiceField) -> BulkDataResult<String> {
     Ok(match field.field_type() {
         RestServiceFieldType::Blob => return Err("Blob type fields are not supported".into()),
-        RestServiceFieldType::Geometry => return Err("Geometry type fields are not supported".into()),
+        RestServiceFieldType::Geometry => {
+            return Err("Geometry type fields are not supported".into())
+        }
         RestServiceFieldType::Raster => return Err("Raster type fields are not supported".into()),
-        RestServiceFieldType::Date => {
-            match value {
-                Value::Null => String::new(),
-                Value::Number(n) => {
-                    let Some(milliseconds) = n.as_i64() else {
+        RestServiceFieldType::Date => match value {
+            Value::Null => String::new(),
+            Value::Number(n) => {
+                let Some(milliseconds) = n.as_i64() else {
                         return Err(format!("Number of {} cannot be converted to i64", n).into())
                     };
-                    let dt = Utc.timestamp_millis(milliseconds);
-                    format!("{}", dt.format("%Y-%m-%d %H:%M:%S"))
-                }
-                _ => return Err("Date fields should only contain numbers or null".into()),
+                let dt = Utc.timestamp_millis(milliseconds);
+                format!("{}", dt.format("%Y-%m-%d %H:%M:%S"))
             }
-        }
+            _ => return Err("Date fields should only contain numbers or null".into()),
+        },
         _ => super::geo_json::map_json_value(value),
     })
+}
+
+fn feature_properties_to_iter<'m, 'f: 'm>(
+    properties: &'m Map<String, Value>,
+    fields: &'f HashMap<String, &'f ServiceField>,
+) -> impl Iterator<Item = BulkDataResult<String>> + 'm {
+    properties
+        .into_iter()
+        .map(|(key, value)| {
+            let Some(field) = fields.get(key.as_str()) else {
+                return Err(format!("Could not find a key found in a feature's properties: \"{}\"", key).into())
+            };
+            map_arcgis_value(value, field)
+        })
 }
 
 pub struct ArcGisRestParser(ArcGisDataOptions);
@@ -111,7 +125,7 @@ impl DataParser for ArcGisRestParser {
         let options = self.0;
         let metadata = match options.metadata().await {
             Ok(m) => m,
-            Err(error) => return record_channel.send(Err(error)).await.err(),
+            Err(error) => return send_error_message(record_channel, error).await,
         };
         let query_format = metadata.query_format();
         let fields: HashMap<String, &ServiceField> = metadata
@@ -120,40 +134,35 @@ impl DataParser for ArcGisRestParser {
             .collect();
         let queries = match metadata.queries() {
             Ok(q) => q,
-            Err(error) => return record_channel.send(Err(error)).await.err(),
+            Err(error) => return send_error_message(record_channel, error).await,
         };
         let client = reqwest::Client::new();
         for query in queries {
             let query = match query {
                 Ok(q) => q,
-                Err(error) => return record_channel.send(Err(error)).await.err(),
+                Err(error) => return send_error_message(record_channel, error).await,
             };
             let feature_collection = match fetch_query(&client, &query, query_format).await {
                 Ok(c) => c,
-                Err(error) => return record_channel.send(Err(error)).await.err(),
+                Err(error) => return send_error_message(record_channel, error).await,
             };
             for feature in feature_collection {
-                let geom = feature
-                    .geometry
-                    .as_ref()
-                    .and_then(|g| Geometry::<f64>::try_from(g).ok())
-                    .map(|g| g.wkt_string())
-                    .unwrap_or_default();
-                let collect_result = feature
-                    .properties_iter()
-                    .map(|(key, value)| -> BulkDataResult<String> {
-                        let Some(field) = fields.get(key) else {
-                            return Err(format!("Could not find a key found in a feature's properties: \"{}\"", key).into())
-                        };
-                        map_arcgis_value(value, field)
-                    })
-                    .collect::<BulkDataResult<_>>();
-                let mut csv_row: Vec<String> = match collect_result {
-                    Ok(inner) => inner,
-                    Err(error) => return record_channel.send(Err(error)).await.err(),
+                let geom = match feature_geometry_as_wkt(&feature) {
+                    Ok(g) => g,
+                    Err(error) => return send_error_message(record_channel, error).await,
                 };
-                csv_row.push(geom);
-                let result = record_channel.send(Ok(csv_values_to_string(csv_row))).await;
+                let csv_row = match feature.properties {
+                    Some(properies) => {
+                        let csv_iter = feature_properties_to_iter(&properies, &fields)
+                            .chain(std::iter::once(Ok(geom)));
+                        match csv_result_iter_to_string(csv_iter) {
+                            Ok(row) => row,
+                            Err(error) => return send_error_message(record_channel, error).await,
+                        }
+                    }
+                    None => String::new(),
+                };
+                let result = record_channel.send(Ok(csv_row)).await;
                 if let Err(error) = result {
                     return Some(error);
                 }
@@ -167,9 +176,9 @@ impl DataParser for ArcGisRestParser {
 mod tests {
     use serde_json::Value;
 
-    use crate::bulk_loading::{error::BulkDataResult, arcgis::metadata::ServiceField};
+    use crate::bulk_loading::{arcgis::metadata::ServiceField, error::BulkDataResult};
 
-    use super::{metadata::RestServiceFieldType, map_arcgis_value};
+    use super::{map_arcgis_value, metadata::RestServiceFieldType};
 
     static FIELD_NAME: &str = "test";
 
@@ -204,7 +213,8 @@ mod tests {
     }
 
     #[test]
-    fn map_arcgis_value_should_return_when_type_is_date_and_value_is_number() -> BulkDataResult<()> {
+    fn map_arcgis_value_should_return_when_type_is_date_and_value_is_number() -> BulkDataResult<()>
+    {
         let typ = RestServiceFieldType::Date;
         let field = ServiceField::new(FIELD_NAME, typ);
         let value = Value::Number(1000.into());
@@ -215,7 +225,8 @@ mod tests {
     }
 
     #[test]
-    fn map_arcgis_value_should_return_empty_string_when_type_is_date_and_value_is_null() -> BulkDataResult<()> {
+    fn map_arcgis_value_should_return_empty_string_when_type_is_date_and_value_is_null(
+    ) -> BulkDataResult<()> {
         let typ = RestServiceFieldType::Date;
         let field = ServiceField::new(FIELD_NAME, typ);
         let value = Value::Null;
