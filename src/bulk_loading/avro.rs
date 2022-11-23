@@ -7,10 +7,10 @@ use super::{
 use avro_rs::{
     schema::{RecordField, Schema as AvroSchema},
     types::Value,
-    Reader,
+    Duration, Reader,
 };
 use chrono::{NaiveTime, TimeZone, Utc};
-use serde_json::Value as JsonValue;
+use serde_json::{json, Value as JsonValue};
 use std::fmt::Write;
 use std::{fs::File, io::BufReader, path::PathBuf};
 use tokio::sync::mpsc::{error::SendError, Sender};
@@ -59,7 +59,7 @@ fn avro_field_to_column_type(field: &RecordField) -> BulkDataResult<ColumnType> 
         AvroSchema::TimeMicros => ColumnType::Time,
         AvroSchema::TimestampMillis => ColumnType::Timestamp,
         AvroSchema::TimestampMicros => ColumnType::Timestamp,
-        AvroSchema::Duration => ColumnType::Text,
+        AvroSchema::Duration => ColumnType::Json,
     })
 }
 
@@ -101,7 +101,7 @@ impl SchemaParser for IpcSchemaParser {
 #[inline]
 fn convert_time_nano_secs_to_string(value: i64) -> BulkDataResult<String> {
     let nano_overflow = value % 1_000_000_000;
-    let secs = value - nano_overflow;
+    let secs = (value - nano_overflow) / 1_000_000_000;
     NaiveTime::from_num_seconds_from_midnight_opt(secs as u32, nano_overflow as u32)
         .map(|t| format!("{}", t.format("%H:%M:%S")))
         .ok_or_else(|| format!("Could not convert {} ns to Time", value).into())
@@ -132,6 +132,19 @@ fn serialize_to_json_value(avro_value: Value) -> BulkDataResult<String> {
     Ok(serde_json::to_string(&value)?)
 }
 
+#[inline]
+fn duration_to_json_value(duration: Duration) -> String {
+    let months = u32::from_le_bytes(*duration.months().as_ref());
+    let days = u32::from_le_bytes(*duration.days().as_ref());
+    let millis = u32::from_le_bytes(*duration.millis().as_ref());
+    json!({
+        "months": months,
+        "days": days,
+        "millis": millis,
+    })
+    .to_string()
+}
+
 fn map_avro_value(value: Value) -> BulkDataResult<String> {
     Ok(match value {
         Value::Null => String::new(),
@@ -156,7 +169,7 @@ fn map_avro_value(value: Value) -> BulkDataResult<String> {
         Value::TimeMicros(t) => convert_time_nano_secs_to_string(t as i64 * 1_000)?,
         Value::TimestampMillis(t) => convert_timestamp_secs_to_string(t as i64 / 1_000),
         Value::TimestampMicros(t) => convert_timestamp_secs_to_string(t as i64 / 1_000_000),
-        Value::Duration(d) => format!("{:?}", d),
+        Value::Duration(d) => duration_to_json_value(d),
         Value::Uuid(u) => u.to_string(),
     })
 }
@@ -216,16 +229,17 @@ impl DataParser for AvroFileParser {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-
+    use super::avro_field_to_column_type;
+    use crate::bulk_loading::{analyze::ColumnType, avro::map_avro_value, error::BulkDataResult};
     use avro_rs::{
         schema::{Name, RecordField, RecordFieldOrder},
-        Schema as AvroSchema,
+        types::Value,
+        Days, Duration, Millis, Months, Schema as AvroSchema,
     };
-
-    use crate::bulk_loading::{analyze::ColumnType, error::BulkDataResult};
-
-    use super::avro_field_to_column_type;
+    use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+    use polars::export::num::{BigInt, One};
+    use serde_json::{json, Value as JsonValue};
+    use std::collections::HashMap;
 
     fn record_field_for_type(schema: AvroSchema) -> RecordField {
         RecordField {
@@ -501,7 +515,314 @@ mod tests {
 
         let column_type = avro_field_to_column_type(&field)?;
 
-        assert_eq!(ColumnType::Text, column_type);
+        assert_eq!(ColumnType::Json, column_type);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_empty_string_when_null_value() -> BulkDataResult<()> {
+        let value = Value::Null;
+
+        let result = map_avro_value(value)?;
+
+        assert_eq!("", result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_literal_bool_when_boolean_value() -> BulkDataResult<()> {
+        let true_value = Value::Boolean(true);
+        let false_value = Value::Boolean(false);
+
+        let true_result = map_avro_value(true_value)?;
+        let false_result = map_avro_value(false_value)?;
+
+        assert_eq!("true", true_result);
+        assert_eq!("false", false_result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_int_literal_when_int_value() -> BulkDataResult<()> {
+        let value = Value::Int(26);
+
+        let result = map_avro_value(value)?;
+
+        assert_eq!("26", result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_long_literal_when_long_value() -> BulkDataResult<()> {
+        let value = Value::Long(56895645789);
+
+        let result = map_avro_value(value)?;
+
+        assert_eq!("56895645789", result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_float_literal_when_float_value() -> BulkDataResult<()> {
+        let value = Value::Float(56.2356);
+
+        let result = map_avro_value(value)?;
+
+        assert_eq!("56.2356", result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_double_literal_when_double_value() -> BulkDataResult<()> {
+        let value = Value::Double(7584259.895467);
+
+        let result = map_avro_value(value)?;
+
+        assert_eq!("7584259.895467", result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_array_literal_when_bytes_value() -> BulkDataResult<()> {
+        let value = Value::Bytes(vec![26, 85, 96]);
+
+        let result = map_avro_value(value)?;
+
+        assert_eq!("{26,85,96}", result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_exact_string_when_string_value() -> BulkDataResult<()> {
+        let str = "This is a test";
+        let value = Value::String(String::from(str));
+
+        let result = map_avro_value(value)?;
+
+        assert_eq!(str, result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_array_literal_when_fixed_value() -> BulkDataResult<()> {
+        let value = Value::Fixed(0, vec![86, 96, 84]);
+
+        let result = map_avro_value(value)?;
+
+        assert_eq!("{86,96,84}", result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_exact_string_when_enum_value() -> BulkDataResult<()> {
+        let str = "This is a test";
+        let value = Value::Enum(1, String::from(str));
+
+        let result = map_avro_value(value)?;
+
+        assert_eq!(str, result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_inner_exact_string_when_union_value() -> BulkDataResult<()> {
+        let str = "This is a test";
+        let value = Value::Union(Box::new(Value::String(String::from(str))));
+
+        let result = map_avro_value(value)?;
+
+        assert_eq!(str, result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_json_string_when_array_value() -> BulkDataResult<()> {
+        let arr = vec![
+            Value::Int(5),
+            Value::Int(6),
+            Value::Int(9),
+            Value::Int(8),
+            Value::Int(45),
+        ];
+        let value = Value::Array(arr);
+
+        let result = map_avro_value(value)?;
+
+        assert_eq!("[5,6,9,8,45]", result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_json_string_when_map_value() -> BulkDataResult<()> {
+        let id = "id";
+        let id_value = 8;
+        let name = "name";
+        let name_value = "Test";
+        let typ = "type";
+        let items = "items";
+        let items_value = vec![5, 6];
+        let expected_result = json!({
+            id: id_value,
+            name: name_value,
+            typ: JsonValue::Null,
+            items: items_value,
+        });
+        let obj = HashMap::from_iter(vec![
+            (String::from(id), Value::Int(id_value)),
+            (String::from(name), Value::String(String::from(name_value))),
+            (String::from(typ), Value::Null),
+            (
+                String::from(items),
+                Value::Array(items_value.into_iter().map(Value::Int).collect()),
+            ),
+        ]);
+        let value = Value::Map(obj);
+
+        let result: JsonValue = serde_json::from_str(&map_avro_value(value)?)?;
+
+        assert_eq!(expected_result, result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_json_string_when_record_value() -> BulkDataResult<()> {
+        let id = "id";
+        let id_value = 8;
+        let name = "name";
+        let name_value = "Test";
+        let typ = "type";
+        let items = "items";
+        let items_value = vec![5, 6];
+        let expected_result = json!({
+            id: id_value,
+            name: name_value,
+            typ: JsonValue::Null,
+            items: items_value,
+        });
+        let obj = vec![
+            (String::from(id), Value::Int(id_value)),
+            (String::from(name), Value::String(String::from(name_value))),
+            (String::from(typ), Value::Null),
+            (
+                String::from(items),
+                Value::Array(items_value.into_iter().map(Value::Int).collect()),
+            ),
+        ];
+        let value = Value::Record(obj);
+
+        let result: JsonValue = serde_json::from_str(&map_avro_value(value)?)?;
+
+        assert_eq!(expected_result, result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_formatted_date_when_date_value() -> BulkDataResult<()> {
+        let epoch_date = NaiveDate::from_ymd(1970, 1, 1);
+        let date = NaiveDate::from_ymd(2000, 1, 1);
+        let value = Value::Date(date.signed_duration_since(epoch_date).num_days() as i32);
+
+        let result = map_avro_value(value)?;
+
+        assert_eq!("2000-01-01", result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_array_literal_when_decimal_value() -> BulkDataResult<()> {
+        let decimal = BigInt::one();
+        let value = Value::Decimal(decimal.to_signed_bytes_be().into());
+
+        let result = map_avro_value(value)?;
+
+        assert_eq!("{1}", result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_formatted_time_when_time_value() -> BulkDataResult<()> {
+        static SECS_IN_HOUR: i32 = 60 * 60;
+        static SECS_IN_MINUTE: i32 = 60;
+        let hours = 5;
+        let minutes = 30;
+        let secs = 5;
+        let expected_result = format!("{:02}:{:02}:{:02}", hours, minutes, secs);
+
+        let time = hours * SECS_IN_HOUR + minutes * SECS_IN_MINUTE + secs;
+
+        let millis_value = Value::TimeMillis(time * 1_000);
+        let micros_value = Value::TimeMicros(time as i64 * 1_000_000_i64);
+
+        let millis_result = map_avro_value(millis_value)?;
+        let micros_result = map_avro_value(micros_value)?;
+
+        assert_eq!(expected_result, millis_result);
+        assert_eq!(expected_result, micros_result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_formatted_timestamp_when_timestamp_value() -> BulkDataResult<()>
+    {
+        let expected_result = "2000-01-01 05:30:05";
+        let date = NaiveDate::from_ymd(2000, 1, 1);
+        let time = NaiveTime::from_hms(5, 30, 5);
+        let date_time = NaiveDateTime::new(date, time);
+
+        let millis_value = Value::TimestampMillis(date_time.timestamp_millis());
+        let micros_value = Value::TimestampMicros(date_time.timestamp_micros());
+
+        let millis_result = map_avro_value(millis_value)?;
+        let micros_result = map_avro_value(micros_value)?;
+
+        assert_eq!(expected_result, millis_result);
+        assert_eq!(expected_result, micros_result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_debug_output_when_duration_value() -> BulkDataResult<()> {
+        let value = Value::Duration(Duration::new(
+            Months::new(1),
+            Days::new(5),
+            Millis::new(1000),
+        ));
+
+        let result = map_avro_value(value)?;
+
+        assert_eq!(r#"{"months":1,"days":5,"millis":1000}"#, result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn map_avro_value_should_return_string_when_uuid_value() -> BulkDataResult<()> {
+        let uuid_str = "a072b040-075f-4b4f-87ba-02e9e8a5622d";
+        let uuid = uuid::Uuid::parse_str(uuid_str).unwrap();
+        let value = Value::Uuid(uuid);
+
+        let result = map_avro_value(value)?;
+
+        assert_eq!(uuid_str, result);
 
         Ok(())
     }
