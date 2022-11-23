@@ -31,7 +31,10 @@ fn collect_columns_into_schema(
     let columns = columns
         .into_iter()
         .map(|(field, typ)| (field, typ.unwrap_or(ColumnType::Text)))
-        .chain(std::iter::once((String::from("geometry"), ColumnType::Geometry)));
+        .chain(std::iter::once((
+            String::from("geometry"),
+            ColumnType::Geometry,
+        )));
     Schema::from_iter(table_name, columns)
 }
 
