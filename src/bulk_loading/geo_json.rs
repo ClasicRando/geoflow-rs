@@ -23,6 +23,20 @@ fn column_type_from_value(value: &JsonValue) -> Option<ColumnType> {
         JsonValue::Object(_) => Some(ColumnType::Json),
     }
 }
+
+fn collect_columns_into_schema(
+    table_name: &str,
+    columns: Vec<(String, usize, Option<ColumnType>)>,
+) -> BulkDataResult<Schema> {
+    let geo_column = ColumnMetadata::new("geometry", columns.len(), ColumnType::Geometry);
+    let columns: Vec<ColumnMetadata> = columns
+        .into_iter()
+        .map(ColumnMetadata::from_tuple)
+        .chain(std::iter::once(geo_column))
+        .collect::<BulkDataResult<_>>()?;
+    Schema::new(table_name, columns)
+}
+
 pub struct GeoJsonOptions {
     file_path: PathBuf,
 }
@@ -61,8 +75,27 @@ impl SchemaParser for GeoJsonSchemaParser {
         };
         let feature_reader = self.0.reader()?;
         let mut undefined_type = false;
-        let mut columns: Vec<(String, usize, Option<ColumnType>)> = Vec::new();
-        for feature in feature_reader.features() {
+        let mut features = feature_reader.features();
+        let first_feature = match features.next() {
+            Some(Ok(f)) => f,
+            Some(Err(error)) => return Err(error.into()),
+            None => return Schema::new(table_name, vec![]),
+        };
+        let mut columns: Vec<(String, usize, Option<ColumnType>)> = first_feature
+            .properties_iter()
+            .enumerate()
+            .map(|(i, (field, value))| {
+                let typ = column_type_from_value(value);
+                undefined_type = undefined_type || typ.is_none();
+                (field.to_owned(), i, typ)
+            })
+            .collect();
+
+        if !undefined_type {
+            return collect_columns_into_schema(table_name, columns);
+        }
+
+        for feature in features {
             let feature = feature?;
             for (i, (field, value)) in feature.properties_iter().enumerate() {
                 match columns.get_mut(i) {
@@ -71,11 +104,14 @@ impl SchemaParser for GeoJsonSchemaParser {
                         *typ = column_type_from_value(value);
                         undefined_type = undefined_type || typ.is_none();
                     }
-                    None => {
-                        let typ = column_type_from_value(value);
-                        undefined_type = undefined_type || typ.is_none();
-                        columns.push((field.to_owned(), i, typ));
-                    }
+                    None => return Err(
+                        format!(
+                            "Found column with index {} named \"{}\" that was not found in the first feature",
+                            i,
+                            field
+                        )
+                        .into()
+                    )
                 }
             }
             if !undefined_type {
@@ -83,16 +119,7 @@ impl SchemaParser for GeoJsonSchemaParser {
             }
             undefined_type = false;
         }
-        let mut columns: Vec<ColumnMetadata> = columns
-            .into_iter()
-            .map(ColumnMetadata::from_tuple)
-            .collect::<BulkDataResult<_>>()?;
-        columns.push(ColumnMetadata::new(
-            "geometry",
-            columns.len(),
-            ColumnType::Geometry,
-        )?);
-        Schema::new(table_name, columns)
+        collect_columns_into_schema(table_name, columns)
     }
 
     fn data_loader(self) -> DataLoader<Self::DataParser> {
