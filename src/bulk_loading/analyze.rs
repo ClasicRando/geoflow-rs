@@ -1,7 +1,7 @@
 use super::{
     arcgis::{ArcGisDataOptions, ArcGisRestSchemaParser},
     delimited::{DelimitedDataOptions, DelimitedSchemaParser},
-    error::BulkDataResult,
+    error::{BulkDataResult, BulkDataError},
     excel::{ExcelOptions, ExcelSchemaParser},
     geo_json::{GeoJsonOptions, GeoJsonSchemaParser},
     ipc::{IpcFileOptions, IpcSchemaParser},
@@ -111,10 +111,6 @@ impl ColumnMetadata {
         })
     }
 
-    pub fn from_tuple(tup: (String, usize, Option<ColumnType>)) -> BulkDataResult<Self> {
-        Self::new(&tup.0, tup.1, tup.2.unwrap_or(ColumnType::Text))
-    }
-
     #[inline]
     pub fn name(&self) -> &str {
         &self.name
@@ -128,6 +124,14 @@ impl ColumnMetadata {
     #[inline]
     pub fn column_type(&self) -> &ColumnType {
         &self.column_type
+    }
+}
+
+impl TryFrom<(String, usize, Option<ColumnType>)> for ColumnMetadata {
+    type Error = BulkDataError;
+
+    fn try_from(value: (String, usize, Option<ColumnType>)) -> Result<Self, Self::Error> {
+        Self::new(&value.0, value.1, value.2.unwrap_or(ColumnType::Text))
     }
 }
 

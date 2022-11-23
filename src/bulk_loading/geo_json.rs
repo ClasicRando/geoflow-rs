@@ -31,7 +31,7 @@ fn collect_columns_into_schema(
     let geo_column = ColumnMetadata::new("geometry", columns.len(), ColumnType::Geometry);
     let columns: Vec<ColumnMetadata> = columns
         .into_iter()
-        .map(ColumnMetadata::from_tuple)
+        .map(ColumnMetadata::try_from)
         .chain(std::iter::once(geo_column))
         .collect::<BulkDataResult<_>>()?;
     Schema::new(table_name, columns)
