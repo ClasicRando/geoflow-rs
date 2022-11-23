@@ -1,14 +1,13 @@
 use super::{
-    analyze::{Schema, SchemaParser, ColumnType, ColumnMetadata},
+    analyze::{ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
     load::{csv_result_iter_to_string, DataLoader, DataParser},
     options::DataFileOptions,
-    // utilities::{schema_from_dataframe, spool_dataframe_records},
 };
 use parquet::{
+    basic::{LogicalType, Type as PhysicalType},
     file::{reader::FileReader, serialized_reader::SerializedFileReader},
     record::Field,
-    basic::{Type as PhysicalType, LogicalType},
 };
 use polars::prelude::{DataFrame, ParquetReader, SerReader};
 use std::{fs::File, path::PathBuf, sync::Arc};
@@ -49,11 +48,16 @@ impl From<&Arc<parquet::schema::types::Type>> for ColumnType {
             Some(LogicalType::Decimal { .. }) => ColumnType::DoublePrecision,
             Some(LogicalType::Date) => ColumnType::Date,
             Some(LogicalType::Time { .. }) => ColumnType::Time,
-            Some(LogicalType::Timestamp { is_adjusted_to_u_t_c, .. }) => if is_adjusted_to_u_t_c {
-                ColumnType::Timestamp
-            } else {
-                ColumnType::TimestampWithZone
-            },
+            Some(LogicalType::Timestamp {
+                is_adjusted_to_u_t_c,
+                ..
+            }) => {
+                if is_adjusted_to_u_t_c {
+                    ColumnType::Timestamp
+                } else {
+                    ColumnType::TimestampWithZone
+                }
+            }
             Some(LogicalType::Bson) => ColumnType::Json,
             Some(LogicalType::Json) => ColumnType::Json,
             Some(LogicalType::Uuid) => ColumnType::UUID,
@@ -72,7 +76,7 @@ impl From<&Arc<parquet::schema::types::Type>> for ColumnType {
                     }
                 }
                 PhysicalType::FIXED_LEN_BYTE_ARRAY => ColumnType::Text,
-            }
+            },
         }
     }
 }
@@ -96,20 +100,18 @@ impl SchemaParser for ParquetSchemaParser {
             return Err(format!("Could not get filename for \"{:?}\"", &self.0.file_path).into())
         };
         let reader = self.0.reader()?;
-        let columns: Vec<ColumnMetadata> = reader
+        let columns = reader
             .metadata()
             .file_metadata()
             .schema()
             .get_fields()
             .iter()
-            .enumerate()
-            .map(|(i, field)| {
+            .map(|field| {
                 let name = field.name();
                 let actual_type = field.into();
-                ColumnMetadata::new(name, i, actual_type)
-            })
-            .collect::<BulkDataResult<_>>()?;
-        Ok(Schema::new(table_name, columns)?)
+                (name, actual_type)
+            });
+        Schema::from_iter(table_name, columns)
     }
 
     fn data_loader(self) -> DataLoader<Self::DataParser> {
@@ -129,7 +131,9 @@ fn map_parquet_field(name: &String, field: &Field) -> BulkDataResult<String> {
                 format!("{}", b)
             }
         }
-        Field::Group(_) | Field::ListInternal(_) | Field::MapInternal(_) => format!("{}", field.to_json_value()),
+        Field::Group(_) | Field::ListInternal(_) | Field::MapInternal(_) => {
+            format!("{}", field.to_json_value())
+        }
         Field::Str(s) => s.to_string(),
         _ => field.to_string(),
     })

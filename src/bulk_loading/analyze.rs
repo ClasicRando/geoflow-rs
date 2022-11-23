@@ -1,7 +1,7 @@
 use super::{
     arcgis::{ArcGisDataOptions, ArcGisRestSchemaParser},
     delimited::{DelimitedDataOptions, DelimitedSchemaParser},
-    error::{BulkDataResult, BulkDataError},
+    error::{BulkDataError, BulkDataResult},
     excel::{ExcelOptions, ExcelSchemaParser},
     geo_json::{GeoJsonOptions, GeoJsonSchemaParser},
     ipc::{IpcFileOptions, IpcSchemaParser},
@@ -156,6 +156,31 @@ impl Schema {
             table_name,
             columns,
         })
+    }
+
+    pub fn from_iter<S: AsRef<str>, I: Iterator<Item = (S, ColumnType)>>(
+        table_name: &str,
+        columns: I,
+    ) -> BulkDataResult<Self> {
+        let columns = columns
+            .enumerate()
+            .map(|(i, (name, typ))| ColumnMetadata::new(name.as_ref(), i, typ))
+            .collect::<BulkDataResult<_>>()?;
+        Self::new(table_name, columns)
+    }
+
+    pub fn from_result_iter<S: AsRef<str>, I: Iterator<Item = BulkDataResult<(S, ColumnType)>>>(
+        table_name: &str,
+        columns: I,
+    ) -> BulkDataResult<Self> {
+        let columns = columns
+            .enumerate()
+            .map(|(i, item)| -> BulkDataResult<ColumnMetadata> {
+                let (name, typ) = item?;
+                ColumnMetadata::new(name.as_ref(), i, typ)
+            })
+            .collect::<BulkDataResult<_>>()?;
+        Self::new(table_name, columns)
     }
 
     pub fn copy_options(&self, db_schema: &str) -> CopyOptions {

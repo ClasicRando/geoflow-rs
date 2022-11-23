@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use tokio::sync::mpsc::{error::SendError, Sender};
 
 use super::{
-    analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
+    analyze::{ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
     load::{csv_result_iter_to_string, DataLoader, DataParser},
     options::DataFileOptions,
@@ -66,15 +66,11 @@ impl SchemaParser for ExcelSchemaParser {
                 &self.0.sheet_name, &self.0.file_path
             ).into())
         };
-        let columns = header_row
-            .iter()
-            .enumerate()
-            .map(|(i, field)| -> BulkDataResult<ColumnMetadata> {
-                let field_value = map_excel_value(field)?;
-                ColumnMetadata::new(&field_value, i, ColumnType::Text)
-            })
-            .collect::<Result<Vec<ColumnMetadata>, _>>()?;
-        Schema::new(table_name, columns)
+        let columns = header_row.iter().map(|field| {
+            let field_value = map_excel_value(field)?;
+            Ok((field_value, ColumnType::Text))
+        });
+        Schema::from_result_iter(table_name, columns)
     }
 
     fn data_loader(self) -> DataLoader<Self::DataParser> {

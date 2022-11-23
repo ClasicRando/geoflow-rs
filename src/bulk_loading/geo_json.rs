@@ -6,7 +6,7 @@ use tokio::sync::mpsc::{error::SendError, Sender};
 use wkt::ToWkt;
 
 use super::{
-    analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
+    analyze::{ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
     load::{csv_iter_to_string, DataLoader, DataParser},
     options::DataFileOptions,
@@ -26,15 +26,13 @@ fn column_type_from_value(value: &JsonValue) -> Option<ColumnType> {
 
 fn collect_columns_into_schema(
     table_name: &str,
-    columns: Vec<(String, usize, Option<ColumnType>)>,
+    columns: Vec<(String, Option<ColumnType>)>,
 ) -> BulkDataResult<Schema> {
-    let geo_column = ColumnMetadata::new("geometry", columns.len(), ColumnType::Geometry);
-    let columns: Vec<ColumnMetadata> = columns
+    let columns = columns
         .into_iter()
-        .map(ColumnMetadata::try_from)
-        .chain(std::iter::once(geo_column))
-        .collect::<BulkDataResult<_>>()?;
-    Schema::new(table_name, columns)
+        .map(|(field, typ)| (field, typ.unwrap_or(ColumnType::Text)))
+        .chain(std::iter::once((String::from("geometry"), ColumnType::Geometry)));
+    Schema::from_iter(table_name, columns)
 }
 
 pub struct GeoJsonOptions {
@@ -81,13 +79,12 @@ impl SchemaParser for GeoJsonSchemaParser {
             Some(Err(error)) => return Err(error.into()),
             None => return Schema::new(table_name, vec![]),
         };
-        let mut columns: Vec<(String, usize, Option<ColumnType>)> = first_feature
+        let mut columns: Vec<(String, Option<ColumnType>)> = first_feature
             .properties_iter()
-            .enumerate()
-            .map(|(i, (field, value))| {
+            .map(|(field, value)| {
                 let typ = column_type_from_value(value);
                 undefined_type = undefined_type || typ.is_none();
-                (field.to_owned(), i, typ)
+                (field.to_owned(), typ)
             })
             .collect();
 
@@ -99,8 +96,8 @@ impl SchemaParser for GeoJsonSchemaParser {
             let feature = feature?;
             for (i, (field, value)) in feature.properties_iter().enumerate() {
                 match columns.get_mut(i) {
-                    Some((_, _, Some(_))) => continue,
-                    Some((_, _, typ)) => {
+                    Some((_, Some(_))) => continue,
+                    Some((_, typ)) => {
                         *typ = column_type_from_value(value);
                         undefined_type = undefined_type || typ.is_none();
                     }

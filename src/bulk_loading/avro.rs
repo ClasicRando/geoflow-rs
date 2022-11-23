@@ -1,5 +1,5 @@
 use super::{
-    analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
+    analyze::{ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
     load::{csv_result_iter_to_string, DataLoader, DataParser},
     options::DataFileOptions,
@@ -87,12 +87,8 @@ impl SchemaParser for IpcSchemaParser {
         };
         let columns = fields
             .iter()
-            .enumerate()
-            .map(|(i, f)| -> BulkDataResult<ColumnMetadata> {
-                ColumnMetadata::new(&f.name, i, avro_field_to_column_type(f)?)
-            })
-            .collect::<BulkDataResult<_>>()?;
-        Ok(Schema::new(table_name, columns)?)
+            .map(|f| -> BulkDataResult<_> { Ok((&f.name, avro_field_to_column_type(f)?)) });
+        Schema::from_result_iter(table_name, columns)
     }
 
     fn data_loader(self) -> DataLoader<Self::DataParser> {

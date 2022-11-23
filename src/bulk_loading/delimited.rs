@@ -1,5 +1,5 @@
 use super::{
-    analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
+    analyze::{ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
     load::{DataLoader, DataParser},
     options::DataFileOptions,
@@ -74,12 +74,10 @@ impl SchemaParser for DelimitedSchemaParser {
         let Ok(Some(header_line)) = lines.next_line().await else {
             return Err(format!("Could not get first line of \"{:?}\"", &self.0.file_path).into())
         };
-        let columns: Vec<ColumnMetadata> = header_line
+        let columns = header_line
             .split(self.0.delimiter)
-            .enumerate()
-            .map(|(i, field)| ColumnMetadata::new(field.trim_matches('"'), i, ColumnType::Text))
-            .collect::<BulkDataResult<_>>()?;
-        Schema::new(table_name, columns)
+            .map(|field| (field.trim_matches('"'), ColumnType::Text));
+        Schema::from_iter(table_name, columns)
     }
 
     fn data_loader(self) -> DataLoader<Self::DataParser> {
