@@ -7,7 +7,7 @@ use geoflow_rs::{
         geo_json::GeoJsonOptions,
         ipc::IpcFileOptions,
         parquet::ParquetFileOptions,
-        shape::ShapeDataOptions,
+        shape::ShapeDataOptions, avro::AvroFileOptions,
     },
     database::create_db_pool,
 };
@@ -617,6 +617,70 @@ async fn arcgis_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 
     assert_eq!(26_u64, records_loaded);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn avro_data_loading() -> Result<(), Box<dyn std::error::Error>> {
+    let db_schema = "geoflow";
+    let expected_table_name = "avro_data_test";
+    let expected_column_names = [
+        ("int", ColumnType::Integer),
+        ("long", ColumnType::BigInt),
+        ("string", ColumnType::Text),
+        ("boolean", ColumnType::Boolean),
+        ("float", ColumnType::Real),
+        ("double", ColumnType::DoublePrecision),
+        ("bytes", ColumnType::SmallIntArray),
+        ("intarray", ColumnType::Json),
+        ("map", ColumnType::Json),
+        ("union", ColumnType::Text),
+        ("enum", ColumnType::Text),
+        ("record", ColumnType::Json),
+        ("fixed", ColumnType::SmallIntArray),
+        ("decimal", ColumnType::SmallIntArray),
+        ("uuid", ColumnType::UUID),
+        ("date", ColumnType::Date),
+        ("time_millis", ColumnType::Time),
+        ("time_micros", ColumnType::Time),
+        ("timestamp_millis", ColumnType::Timestamp),
+        ("timestamp_micros", ColumnType::Timestamp),
+    ];
+
+    let mut path = std::env::current_dir()?;
+    path.push("tests/avro data test.avro");
+    let options = AvroFileOptions::new(path);
+    let analyzer = SchemaAnalyzer::from_avro(options);
+    let schema = analyzer.schema().await?;
+
+    assert_eq!(expected_table_name, schema.table_name());
+
+    let fields = schema.columns();
+    assert_eq!(expected_column_names.len(), fields.len());
+    for (ex_field, field) in expected_column_names.iter().zip(fields) {
+        assert_eq!(ex_field.0, field.name());
+        assert_eq!(&ex_field.1, field.column_type(), "field = {}", ex_field.0);
+    }
+
+    let pool = create_db_pool().await?;
+    sqlx::query(&format!(
+        "drop table if exists {}.{}",
+        db_schema,
+        schema.table_name()
+    ))
+    .execute(&pool)
+    .await?;
+    let create_statement = schema.create_statement(db_schema);
+    if let Err(error) = sqlx::query(&create_statement).execute(&pool).await {
+        return Err(format!("Error attempting to execute create statement \"{}\".\n{}", create_statement, error).into());
+    }
+
+    let loader = analyzer.loader();
+    let copy_options = schema.copy_options(db_schema);
+    let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
+
+    assert_eq!(20_u64, records_loaded);
 
     Ok(())
 }
