@@ -11,7 +11,7 @@ use crate::bulk_loading::{
     error::BulkDataResult,
     geo_json::feature_geometry_as_wkt,
     load::{DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult},
-    options::DataFileOptions,
+    options::DataOptions,
     utilities::send_error_message,
 };
 use chrono::{TimeZone, Utc};
@@ -25,7 +25,7 @@ pub struct ArcGisDataOptions {
     url: Url,
 }
 
-impl DataFileOptions for ArcGisDataOptions {}
+impl DataOptions for ArcGisDataOptions {}
 
 impl ArcGisDataOptions {
     pub fn new(url: &str) -> BulkDataResult<Self> {

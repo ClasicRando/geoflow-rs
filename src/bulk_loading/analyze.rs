@@ -7,7 +7,7 @@ use super::{
     geo_json::{GeoJsonOptions, GeoJsonSchemaParser},
     ipc::{IpcFileOptions, IpcSchemaParser},
     load::{CopyOptions, DataLoader, DataParser},
-    options::DataFileOptions,
+    options::DataOptions,
     parquet::{ParquetFileOptions, ParquetSchemaParser},
     shape::{ShapeDataOptions, ShapeDataSchemaParser},
 };
@@ -216,7 +216,7 @@ impl Schema {
 
 #[async_trait::async_trait]
 pub trait SchemaParser {
-    type Options: DataFileOptions;
+    type Options: DataOptions;
     type DataParser: DataParser + Send + Sync;
 
     fn new(options: Self::Options) -> Self

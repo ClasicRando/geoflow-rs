@@ -4,7 +4,7 @@ use super::{
     load::{
         csv_result_iter_to_string, DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult,
     },
-    options::DataFileOptions,
+    options::DataOptions,
     utilities::send_error_message,
 };
 use calamine::{open_workbook_auto, DataType, Range, Reader};
@@ -41,7 +41,7 @@ impl ExcelOptions {
     }
 }
 
-impl DataFileOptions for ExcelOptions {}
+impl DataOptions for ExcelOptions {}
 
 pub struct ExcelSchemaParser(ExcelOptions);
 

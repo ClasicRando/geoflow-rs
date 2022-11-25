@@ -2,7 +2,7 @@ use super::{
     analyze::{Schema, SchemaParser},
     error::BulkDataResult,
     load::{DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult},
-    options::DataFileOptions,
+    options::DataOptions,
     utilities::{schema_from_dataframe, spool_dataframe_records},
 };
 use polars::prelude::{DataFrame, IpcReader, SerReader};
@@ -25,7 +25,7 @@ impl IpcFileOptions {
     }
 }
 
-impl DataFileOptions for IpcFileOptions {}
+impl DataOptions for IpcFileOptions {}
 
 pub struct IpcSchemaParser(IpcFileOptions);
 

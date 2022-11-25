@@ -4,7 +4,7 @@ use super::{
     load::{
         csv_result_iter_to_string, DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult,
     },
-    options::DataFileOptions,
+    options::DataOptions,
 };
 use serde::{Deserialize, Serialize};
 use shapefile::{
@@ -45,7 +45,7 @@ impl ShapeDataOptions {
     }
 }
 
-impl DataFileOptions for ShapeDataOptions {}
+impl DataOptions for ShapeDataOptions {}
 
 fn column_type_from_value(value: &FieldValue) -> ColumnType {
     match value {

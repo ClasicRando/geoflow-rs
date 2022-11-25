@@ -2,7 +2,7 @@ use super::{
     analyze::{ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
     load::{DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult},
-    options::DataFileOptions,
+    options::DataOptions,
 };
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
@@ -34,7 +34,7 @@ impl DelimitedDataOptions {
     }
 }
 
-impl DataFileOptions for DelimitedDataOptions {
+impl DataOptions for DelimitedDataOptions {
     #[inline]
     fn delimiter(&self) -> &char {
         &self.delimiter

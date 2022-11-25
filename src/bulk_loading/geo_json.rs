@@ -2,7 +2,7 @@ use super::{
     analyze::{ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
     load::{csv_iter_to_string, DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult},
-    options::DataFileOptions,
+    options::DataOptions,
     utilities::send_error_message,
 };
 use geo_types::Geometry;
@@ -54,7 +54,7 @@ impl GeoJsonOptions {
     }
 }
 
-impl DataFileOptions for GeoJsonOptions {}
+impl DataOptions for GeoJsonOptions {}
 
 pub struct GeoJsonSchemaParser(GeoJsonOptions);
 

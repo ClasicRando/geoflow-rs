@@ -4,7 +4,7 @@ use tokio::sync::mpsc::{channel as mpsc_channel, error::SendError, Sender};
 
 use super::{
     error::{BulkDataError, BulkDataResult},
-    options::DataFileOptions,
+    options::DataOptions,
     utilities::escape_csv_string,
 };
 
@@ -32,7 +32,7 @@ impl CopyOptions {
         }
     }
 
-    fn copy_statement<O: DataFileOptions>(&self, options: &O) -> String {
+    fn copy_statement<O: DataOptions>(&self, options: &O) -> String {
         format!(
             "COPY {} (\"{}\") FROM STDIN WITH (FORMAT csv, DELIMITER '{}', HEADER {}, NULL ''{})",
             self.table_name.to_lowercase(),
@@ -72,7 +72,7 @@ pub fn csv_iter_to_string<I: Iterator<Item = String>>(csv_iter: I) -> String {
 
 #[async_trait::async_trait]
 pub trait DataParser {
-    type Options: DataFileOptions;
+    type Options: DataOptions;
 
     fn options(&self) -> &Self::Options;
     async fn spool_records(self, record_channel: &mut RecordSpoolChannel) -> RecordSpoolResult;

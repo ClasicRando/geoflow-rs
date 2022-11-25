@@ -4,7 +4,7 @@ use super::{
     load::{
         csv_result_iter_to_string, DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult,
     },
-    options::DataFileOptions,
+    options::DataOptions,
 };
 use parquet::{
     basic::{LogicalType, Type as PhysicalType},
@@ -39,7 +39,7 @@ impl ParquetFileOptions {
     }
 }
 
-impl DataFileOptions for ParquetFileOptions {}
+impl DataOptions for ParquetFileOptions {}
 
 impl From<&Arc<parquet::schema::types::Type>> for ColumnType {
     fn from(field: &Arc<parquet::schema::types::Type>) -> Self {

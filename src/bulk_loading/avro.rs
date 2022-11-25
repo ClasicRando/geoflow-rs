@@ -4,7 +4,7 @@ use super::{
     load::{
         csv_result_iter_to_string, DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult,
     },
-    options::DataFileOptions,
+    options::DataOptions,
 };
 use avro_rs::{
     schema::{RecordField, Schema as AvroSchema, UnionSchema},
@@ -35,7 +35,7 @@ impl AvroFileOptions {
     }
 }
 
-impl DataFileOptions for AvroFileOptions {}
+impl DataOptions for AvroFileOptions {}
 
 fn is_nullable_union_schema(schema: &UnionSchema) -> bool {
     schema.variants().len() <= 2 && schema.find_schema(&Value::Null).is_some()
