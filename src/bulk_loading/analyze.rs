@@ -1,5 +1,6 @@
 use super::{
     arcgis::{ArcGisDataOptions, ArcGisRestSchemaParser},
+    avro::{AvroFileOptions, AvroSchemaParser},
     delimited::{DelimitedDataOptions, DelimitedSchemaParser},
     error::{BulkDataError, BulkDataResult},
     excel::{ExcelOptions, ExcelSchemaParser},
@@ -266,6 +267,12 @@ impl SchemaAnalyzer<IpcSchemaParser> {
 impl SchemaAnalyzer<ArcGisRestSchemaParser> {
     pub fn from_arc_gis(options: ArcGisDataOptions) -> Self {
         Self(ArcGisRestSchemaParser::new(options))
+    }
+}
+
+impl SchemaAnalyzer<AvroSchemaParser> {
+    pub fn from_avro(options: AvroFileOptions) -> Self {
+        Self(AvroSchemaParser::new(options))
     }
 }
 
