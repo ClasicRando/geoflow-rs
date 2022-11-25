@@ -5,13 +5,13 @@ use super::{
     options::DataFileOptions,
 };
 use avro_rs::{
-    schema::{RecordField, Schema as AvroSchema},
+    schema::{RecordField, Schema as AvroSchema, UnionSchema},
     types::Value,
     Duration, Reader,
 };
 use chrono::{NaiveTime, TimeZone, Utc};
 use serde_json::{json, Value as JsonValue};
-use std::fmt::Write;
+use std::{collections::HashSet, fmt::Write};
 use std::{fs::File, io::BufReader, path::PathBuf};
 use tokio::sync::mpsc::{error::SendError, Sender};
 
@@ -34,11 +34,13 @@ impl AvroFileOptions {
 
 impl DataFileOptions for AvroFileOptions {}
 
-fn avro_field_to_column_type(field: &RecordField) -> BulkDataResult<ColumnType> {
-    Ok(match &field.schema {
-        AvroSchema::Null => {
-            return Err(format!("Found a null schema for field \"{}\"", field.name).into())
-        }
+fn is_nullable_union_schema(schema: &UnionSchema) -> bool {
+    schema.variants().len() <= 2 && schema.find_schema(&Value::Null).is_some()
+}
+
+fn avro_schema_to_column_type(schema: &AvroSchema) -> BulkDataResult<ColumnType> {
+    Ok(match &schema {
+        AvroSchema::Null => ColumnType::Text,
         AvroSchema::Boolean => ColumnType::Boolean,
         AvroSchema::Int => ColumnType::Integer,
         AvroSchema::Long => ColumnType::BigInt,
@@ -63,10 +65,28 @@ fn avro_field_to_column_type(field: &RecordField) -> BulkDataResult<ColumnType> 
     })
 }
 
-pub struct IpcSchemaParser(AvroFileOptions);
+fn avro_field_to_column_type(field: &RecordField) -> BulkDataResult<ColumnType> {
+    match &field.schema {
+        AvroSchema::Array(_) => Ok(ColumnType::Json),
+        AvroSchema::Union(s) => {
+            if is_nullable_union_schema(s) {
+                let Some(schema) = s.variants().iter().find(|v| *v != &AvroSchema::Null) else {
+                    return Ok(ColumnType::Json)
+                };
+                avro_schema_to_column_type(schema)
+            } else {
+                Ok(ColumnType::Json)
+            }
+        }
+        AvroSchema::Null => Err(format!("Found a null schema for field \"{}\"", field.name).into()),
+        _ => avro_schema_to_column_type(&field.schema),
+    }
+}
+
+pub struct AvroSchemaParser(AvroFileOptions);
 
 #[async_trait::async_trait]
-impl SchemaParser for IpcSchemaParser {
+impl SchemaParser for AvroSchemaParser {
     type Options = AvroFileOptions;
     type DataParser = AvroFileParser;
 
@@ -133,6 +153,40 @@ fn serialize_to_json_value(avro_value: Value) -> BulkDataResult<String> {
 }
 
 #[inline]
+fn union_to_json_value(union: Value) -> BulkDataResult<String> {
+    let union_type = match union {
+        Value::Null => "null",
+        Value::Boolean(_) => "boolean",
+        Value::Int(_) => "int",
+        Value::Long(_) => "long",
+        Value::Float(_) => "float",
+        Value::Double(_) => "double",
+        Value::Bytes(_) => "bytes",
+        Value::String(_) => "string",
+        Value::Fixed(_, _) => "fixed",
+        Value::Enum(_, _) => "enum",
+        Value::Union(_) => "union",
+        Value::Array(_) => "array",
+        Value::Map(_) => "map",
+        Value::Record(_) => "record",
+        Value::Date(_) => "date",
+        Value::Decimal(_) => "decimal",
+        Value::TimeMillis(_) => "time_millis",
+        Value::TimeMicros(_) => "time_micros",
+        Value::TimestampMillis(_) => "timestamp_millis",
+        Value::TimestampMicros(_) => "timestamp_micros",
+        Value::Duration(_) => "duration",
+        Value::Uuid(_) => "uuid",
+    };
+    let union_value = map_avro_value(union)?;
+    Ok(json!({
+        "type": union_type,
+        "value": union_value,
+    })
+    .to_string())
+}
+
+#[inline]
 fn duration_to_json_value(duration: Duration) -> String {
     let months = u32::from_le_bytes(*duration.months().as_ref());
     let days = u32::from_le_bytes(*duration.days().as_ref());
@@ -157,7 +211,7 @@ fn map_avro_value(value: Value) -> BulkDataResult<String> {
         Value::String(s) => s,
         Value::Fixed(_, b) => small_int_array_literal(b)?,
         Value::Enum(_, n) => n,
-        Value::Union(b) => return map_avro_value(*b),
+        Value::Union(b) => union_to_json_value(*b)?,
         Value::Record(_) | Value::Map(_) | Value::Array(_) => serialize_to_json_value(value)?,
         Value::Date(d) => {
             static NUM_SECONDS_IN_DAY: i64 = 60 * 60 * 24;
@@ -199,6 +253,31 @@ impl DataParser for AvroFileParser {
             Ok(reader) => reader,
             Err(error) => return record_channel.send(Err(error)).await.err(),
         };
+        let AvroSchema::Record { fields, .. } = reader.writer_schema() else {
+            return record_channel.send(
+                Err(
+                    format!(
+                        "File schema for \"{:?}\" is not a record. Found {:?}",
+                        &options.file_path,
+                        reader.writer_schema()
+                    )
+                    .into()
+                )
+            )
+            .await
+            .err()
+        };
+        let nullable_union_columns: HashSet<String> = fields
+            .iter()
+            .filter_map(|f| {
+                if let AvroSchema::Union(schema) = &f.schema {
+                    if is_nullable_union_schema(schema) {
+                        return Some(f.name.to_owned());
+                    }
+                }
+                None
+            })
+            .collect();
         for (i, record) in reader.enumerate() {
             let record = match record {
                 Ok(Value::Record(fields)) => fields,
@@ -215,7 +294,14 @@ impl DataParser for AvroFileParser {
                 }
                 Err(error) => return record_channel.send(Err(error.into())).await.err(),
             };
-            let csv_iter = record.into_iter().map(|(_, value)| map_avro_value(value));
+            let csv_iter = record.into_iter().map(|(key, value)| {
+                if nullable_union_columns.contains(&key) {
+                    if let Value::Union(union_box) = value {
+                        return map_avro_value(*union_box);
+                    }
+                }
+                map_avro_value(value)
+            });
             let result = record_channel
                 .send(csv_result_iter_to_string(csv_iter))
                 .await;
@@ -636,13 +722,18 @@ mod tests {
     }
 
     #[test]
-    fn map_avro_value_should_return_inner_exact_string_when_union_value() -> BulkDataResult<()> {
+    fn map_avro_value_should_return_inner_as_json_when_union_value() -> BulkDataResult<()> {
         let str = "This is a test";
+        let expected_value = json!({
+            "type": "string",
+            "value": str,
+        })
+        .to_string();
         let value = Value::Union(Box::new(Value::String(String::from(str))));
 
         let result = map_avro_value(value)?;
 
-        assert_eq!(str, result);
+        assert_eq!(expected_value, result);
 
         Ok(())
     }
