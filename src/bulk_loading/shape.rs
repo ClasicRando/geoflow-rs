@@ -88,21 +88,16 @@ impl SchemaParser for ShapeDataSchemaParser {
             .0
             .fields()?
             .iter()
-            .enumerate()
-            .filter(|(_, f)| f.name() != "DeletionFlag")
-            .map(|(index, field)| -> BulkDataResult<ColumnMetadata> {
+            .filter(|f| f.name() != "DeletionFlag")
+            .map(|field| -> BulkDataResult<ColumnMetadata> {
                 let field_name = field.name();
                 let Some(field_value) = record.get(field_name) else {
                     return Err(format!("Could not find value for field {}", field_name).into())
                 };
-                ColumnMetadata::new(field_name, index, column_type_from_value(field_value))
+                ColumnMetadata::new(field_name, column_type_from_value(field_value))
             })
             .collect::<BulkDataResult<_>>()?;
-        columns.push(ColumnMetadata::new(
-            "geometry",
-            columns.len(),
-            ColumnType::Geometry,
-        )?);
+        columns.push(ColumnMetadata::new("geometry", ColumnType::Geometry)?);
         Schema::new(table_name, columns)
     }
 

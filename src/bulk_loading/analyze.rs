@@ -89,25 +89,22 @@ impl ColumnType {
 #[derive(Debug)]
 pub struct ColumnMetadata {
     name: String,
-    index: usize,
     column_type: ColumnType,
 }
 
 impl ColumnMetadata {
-    pub fn new(name: &str, index: usize, column_type: ColumnType) -> BulkDataResult<Self> {
+    pub fn new(name: &str, column_type: ColumnType) -> BulkDataResult<Self> {
         if SQL_NAME_REGEX.is_match(name) {
             return Ok(Self {
                 name: name.to_lowercase(),
-                index,
                 column_type,
             });
         }
         let Some(column_name) = clean_sql_name(name) else {
-            return Err(format!("Column name for index {} was empty after cleaning", index).into());
+            return Err(format!("Column name \"{}\" was empty after cleaning", name).into());
         };
         Ok(Self {
             name: column_name,
-            index,
             column_type,
         })
     }
@@ -118,21 +115,16 @@ impl ColumnMetadata {
     }
 
     #[inline]
-    pub fn index(&self) -> &usize {
-        &self.index
-    }
-
-    #[inline]
     pub fn column_type(&self) -> &ColumnType {
         &self.column_type
     }
 }
 
-impl TryFrom<(String, usize, Option<ColumnType>)> for ColumnMetadata {
+impl TryFrom<(String, Option<ColumnType>)> for ColumnMetadata {
     type Error = BulkDataError;
 
-    fn try_from(value: (String, usize, Option<ColumnType>)) -> Result<Self, Self::Error> {
-        Self::new(&value.0, value.1, value.2.unwrap_or(ColumnType::Text))
+    fn try_from(value: (String, Option<ColumnType>)) -> Result<Self, Self::Error> {
+        Self::new(&value.0, value.1.unwrap_or(ColumnType::Text))
     }
 }
 
@@ -164,8 +156,7 @@ impl Schema {
         columns: I,
     ) -> BulkDataResult<Self> {
         let columns = columns
-            .enumerate()
-            .map(|(i, (name, typ))| ColumnMetadata::new(name.as_ref(), i, typ))
+            .map(|(name, typ)| ColumnMetadata::new(name.as_ref(), typ))
             .collect::<BulkDataResult<_>>()?;
         Self::new(table_name, columns)
     }
@@ -175,10 +166,9 @@ impl Schema {
         columns: I,
     ) -> BulkDataResult<Self> {
         let columns = columns
-            .enumerate()
-            .map(|(i, item)| -> BulkDataResult<ColumnMetadata> {
+            .map(|item| -> BulkDataResult<ColumnMetadata> {
                 let (name, typ) = item?;
-                ColumnMetadata::new(name.as_ref(), i, typ)
+                ColumnMetadata::new(name.as_ref(), typ)
             })
             .collect::<BulkDataResult<_>>()?;
         Self::new(table_name, columns)

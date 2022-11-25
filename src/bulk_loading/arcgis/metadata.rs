@@ -516,17 +516,12 @@ impl<'u> TryFrom<ArcGisRestMetadata<'u>> for Schema {
     fn try_from(value: ArcGisRestMetadata<'u>) -> Result<Self, Self::Error> {
         let mut columns: Vec<ColumnMetadata> = value
             .fields()
-            .enumerate()
-            .map(|(i, f)| -> BulkDataResult<ColumnMetadata> {
-                ColumnMetadata::new(f.name(), i, f.field_type().try_into()?)
+            .map(|f| -> BulkDataResult<ColumnMetadata> {
+                ColumnMetadata::new(f.name(), f.field_type().try_into()?)
             })
             .collect::<BulkDataResult<_>>()?;
         if !value.is_table() {
-            columns.push(ColumnMetadata::new(
-                "geometry",
-                columns.len(),
-                ColumnType::Geometry,
-            )?);
+            columns.push(ColumnMetadata::new("geometry", ColumnType::Geometry)?);
         }
         Schema::new(value.name(), columns)
     }
