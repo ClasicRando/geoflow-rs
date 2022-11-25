@@ -10,7 +10,7 @@ use crate::bulk_loading::{
     analyze::{Schema, SchemaParser},
     error::BulkDataResult,
     geo_json::feature_geometry_as_wkt,
-    load::{DataLoader, DataParser},
+    load::{DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult},
     options::DataFileOptions,
     utilities::send_error_message,
 };
@@ -18,7 +18,6 @@ use chrono::{TimeZone, Utc};
 use reqwest::Url;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
-use tokio::sync::mpsc::{error::SendError, Sender};
 
 pub struct ArcGisDataOptions {
     url: Url,
@@ -118,10 +117,7 @@ impl DataParser for ArcGisRestParser {
         &self.0
     }
 
-    async fn spool_records(
-        self,
-        record_channel: &mut Sender<BulkDataResult<String>>,
-    ) -> Option<SendError<BulkDataResult<String>>> {
+    async fn spool_records(self, record_channel: &mut RecordSpoolChannel) -> RecordSpoolResult {
         let options = self.0;
         let metadata = match options.metadata().await {
             Ok(m) => m,
