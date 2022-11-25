@@ -7,6 +7,7 @@ use super::{
 };
 use geo_types::Geometry;
 use geojson::{Feature, FeatureReader, JsonValue};
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::{fs::File, io::BufReader, path::PathBuf};
 use wkt::ToWkt;
@@ -36,6 +37,7 @@ fn collect_columns_into_schema(
     Schema::from_iter(table_name, columns)
 }
 
+#[derive(Deserialize, Serialize)]
 pub struct GeoJsonOptions {
     file_path: PathBuf,
 }

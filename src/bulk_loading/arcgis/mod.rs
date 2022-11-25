@@ -16,9 +16,11 @@ use crate::bulk_loading::{
 };
 use chrono::{TimeZone, Utc};
 use reqwest::Url;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::collections::HashMap;
 
+#[derive(Deserialize, Serialize)]
 pub struct ArcGisDataOptions {
     url: Url,
 }

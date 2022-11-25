@@ -12,10 +12,12 @@ use parquet::{
     record::Field,
 };
 use polars::prelude::{DataFrame, ParquetReader, SerReader};
+use serde::{Deserialize, Serialize};
 use std::{fs::File, path::PathBuf, sync::Arc};
 use wkb::wkb_to_geom;
 use wkt::ToWkt;
 
+#[derive(Deserialize, Serialize)]
 pub struct ParquetFileOptions {
     file_path: PathBuf,
 }

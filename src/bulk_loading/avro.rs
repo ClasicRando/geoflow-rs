@@ -12,10 +12,12 @@ use avro_rs::{
     Duration, Reader,
 };
 use chrono::{NaiveTime, TimeZone, Utc};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use std::{collections::HashSet, fmt::Write};
 use std::{fs::File, io::BufReader, path::PathBuf};
 
+#[derive(Deserialize, Serialize)]
 pub struct AvroFileOptions {
     file_path: PathBuf,
 }

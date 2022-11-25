@@ -5,11 +5,13 @@ use super::{
     options::DataFileOptions,
 };
 use std::path::PathBuf;
+use serde::{Deserialize, Serialize};
 use tokio::{
     fs::File as TkFile,
     io::{AsyncBufReadExt, BufReader as TkBufReader, Lines as TkLines},
 };
 
+#[derive(Deserialize, Serialize)]
 pub struct DelimitedDataOptions {
     file_path: PathBuf,
     delimiter: char,

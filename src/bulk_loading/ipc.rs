@@ -6,8 +6,10 @@ use super::{
     utilities::{schema_from_dataframe, spool_dataframe_records},
 };
 use polars::prelude::{DataFrame, IpcReader, SerReader};
+use serde::{Deserialize, Serialize};
 use std::{fs::File, path::PathBuf};
 
+#[derive(Deserialize, Serialize)]
 pub struct IpcFileOptions {
     file_path: PathBuf,
 }

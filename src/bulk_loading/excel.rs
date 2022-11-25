@@ -8,8 +8,10 @@ use super::{
     utilities::send_error_message,
 };
 use calamine::{open_workbook_auto, DataType, Range, Reader};
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
+#[derive(Deserialize, Serialize)]
 pub struct ExcelOptions {
     file_path: PathBuf,
     sheet_name: String,

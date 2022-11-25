@@ -6,6 +6,7 @@ use super::{
     },
     options::DataFileOptions,
 };
+use serde::{Deserialize, Serialize};
 use shapefile::{
     dbase::{FieldInfo, FieldValue, Reader as DbfReader},
     Reader, Shape,
@@ -13,6 +14,7 @@ use shapefile::{
 use std::{fs::File, io::BufReader, path::PathBuf};
 use wkt::ToWkt;
 
+#[derive(Deserialize, Serialize)]
 pub struct ShapeDataOptions {
     file_path: PathBuf,
 }

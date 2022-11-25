@@ -1,4 +1,6 @@
-pub trait DataFileOptions {
+use serde::{Deserialize, Serialize};
+
+pub trait DataFileOptions : Serialize + for<'a> Deserialize<'a> + Sized {
     fn delimiter(&self) -> &char {
         &','
     }

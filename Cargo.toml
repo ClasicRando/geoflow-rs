@@ -35,5 +35,5 @@ parquet = { version = "27.0.0", features = ["json"] }
 wkb = "0.7.1"
 avro-rs = "0.13.0"
 serde-aux = "4.1.2"
-url = "2.3.1"
+url = { version = "2.3.1", features = ["serde"] }
 uuid = "0.8.2"
