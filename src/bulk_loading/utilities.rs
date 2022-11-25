@@ -1,11 +1,9 @@
-use polars::prelude::{AnyValue, DataFrame, DataType, TimeUnit};
-use tokio::sync::mpsc::{error::SendError, Sender};
-
 use super::{
     analyze::{ColumnMetadata, ColumnType, Schema},
     error::{BulkDataError, BulkDataResult},
-    load::{csv_result_iter_to_string, RecordSpoolResult},
+    load::{csv_result_iter_to_string, RecordSpoolChannel, RecordSpoolResult},
 };
+use polars::prelude::{AnyValue, DataFrame, DataType, TimeUnit};
 
 pub fn escape_csv_string(csv_string: String) -> String {
     if csv_string
@@ -20,7 +18,7 @@ pub fn escape_csv_string(csv_string: String) -> String {
 
 #[inline]
 pub async fn send_error_message<E: Into<BulkDataError>>(
-    channel: &mut Sender<BulkDataResult<String>>,
+    channel: &mut RecordSpoolChannel,
     error: E,
 ) -> RecordSpoolResult {
     channel.send(Err(error.into())).await.err()
@@ -81,8 +79,8 @@ pub fn schema_from_dataframe(file_name: String, dataframe: DataFrame) -> BulkDat
 
 pub async fn spool_dataframe_records(
     dataframe: DataFrame,
-    record_channel: &mut Sender<BulkDataResult<String>>,
-) -> Option<SendError<BulkDataResult<String>>> {
+    record_channel: &mut RecordSpoolChannel,
+) -> RecordSpoolResult {
     let mut iters = dataframe.iter().map(|s| s.iter()).collect::<Vec<_>>();
     for _ in 0..dataframe.height() {
         let row_data = iters.iter_mut().map(|iter| {

@@ -1,17 +1,17 @@
+use super::{
+    analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
+    error::BulkDataResult,
+    load::{
+        csv_result_iter_to_string, DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult,
+    },
+    options::DataFileOptions,
+};
 use shapefile::{
     dbase::{FieldInfo, FieldValue, Reader as DbfReader},
     Reader, Shape,
 };
 use std::{fs::File, io::BufReader, path::PathBuf};
-use tokio::sync::mpsc::{error::SendError, Sender};
 use wkt::ToWkt;
-
-use super::{
-    analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
-    error::BulkDataResult,
-    load::{csv_result_iter_to_string, DataLoader, DataParser},
-    options::DataFileOptions,
-};
 
 pub struct ShapeDataOptions {
     file_path: PathBuf,
@@ -156,10 +156,7 @@ impl DataParser for ShapeDataParser {
         &self.0
     }
 
-    async fn spool_records(
-        mut self,
-        record_channel: &mut Sender<BulkDataResult<String>>,
-    ) -> Option<SendError<BulkDataResult<String>>> {
+    async fn spool_records(mut self, record_channel: &mut RecordSpoolChannel) -> RecordSpoolResult {
         let options = self.0;
         let fields = match options.fields() {
             Ok(fields) => fields,

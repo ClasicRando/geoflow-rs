@@ -1,14 +1,14 @@
-use calamine::{open_workbook_auto, DataType, Range, Reader};
-use std::path::PathBuf;
-use tokio::sync::mpsc::{error::SendError, Sender};
-
 use super::{
     analyze::{ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
-    load::{csv_result_iter_to_string, DataLoader, DataParser},
+    load::{
+        csv_result_iter_to_string, DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult,
+    },
     options::DataFileOptions,
     utilities::send_error_message,
 };
+use calamine::{open_workbook_auto, DataType, Range, Reader};
+use std::path::PathBuf;
 
 pub struct ExcelOptions {
     file_path: PathBuf,
@@ -115,10 +115,7 @@ impl DataParser for ExcelDataParser {
         &self.0
     }
 
-    async fn spool_records(
-        self,
-        record_channel: &mut Sender<BulkDataResult<String>>,
-    ) -> Option<SendError<BulkDataResult<String>>> {
+    async fn spool_records(self, record_channel: &mut RecordSpoolChannel) -> RecordSpoolResult {
         let sheet = match self.0.sheet() {
             Ok(sheet) => sheet,
             Err(error) => return record_channel.send(Err(error)).await.err(),

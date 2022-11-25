@@ -1,13 +1,12 @@
 use super::{
     analyze::{Schema, SchemaParser},
     error::BulkDataResult,
-    load::{DataLoader, DataParser},
+    load::{DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult},
     options::DataFileOptions,
     utilities::{schema_from_dataframe, spool_dataframe_records},
 };
 use polars::prelude::{DataFrame, IpcReader, SerReader};
 use std::{fs::File, path::PathBuf};
-use tokio::sync::mpsc::{error::SendError, Sender};
 
 pub struct IpcFileOptions {
     file_path: PathBuf,
@@ -71,10 +70,7 @@ impl DataParser for IpcFileParser {
         &self.0
     }
 
-    async fn spool_records(
-        self,
-        record_channel: &mut Sender<BulkDataResult<String>>,
-    ) -> Option<SendError<BulkDataResult<String>>> {
+    async fn spool_records(self, record_channel: &mut RecordSpoolChannel) -> RecordSpoolResult {
         let options = self.0;
         let df = match options.dataframe() {
             Ok(df) => df,

@@ -1,7 +1,9 @@
 use super::{
     analyze::{ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
-    load::{csv_result_iter_to_string, DataLoader, DataParser},
+    load::{
+        csv_result_iter_to_string, DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult,
+    },
     options::DataFileOptions,
 };
 use parquet::{
@@ -11,7 +13,6 @@ use parquet::{
 };
 use polars::prelude::{DataFrame, ParquetReader, SerReader};
 use std::{fs::File, path::PathBuf, sync::Arc};
-use tokio::sync::mpsc::{error::SendError, Sender};
 use wkb::wkb_to_geom;
 use wkt::ToWkt;
 
@@ -155,10 +156,7 @@ impl DataParser for ParquetFileParser {
         &self.0
     }
 
-    async fn spool_records(
-        self,
-        record_channel: &mut Sender<BulkDataResult<String>>,
-    ) -> Option<SendError<BulkDataResult<String>>> {
+    async fn spool_records(self, record_channel: &mut RecordSpoolChannel) -> RecordSpoolResult {
         let options = self.0;
         let reader = match options.reader() {
             Ok(r) => r,

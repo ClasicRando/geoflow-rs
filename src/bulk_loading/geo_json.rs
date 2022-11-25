@@ -1,17 +1,15 @@
+use super::{
+    analyze::{ColumnType, Schema, SchemaParser},
+    error::BulkDataResult,
+    load::{csv_iter_to_string, DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult},
+    options::DataFileOptions,
+    utilities::send_error_message,
+};
 use geo_types::Geometry;
 use geojson::{Feature, FeatureReader, JsonValue};
 use serde_json::{Map, Value};
 use std::{fs::File, io::BufReader, path::PathBuf};
-use tokio::sync::mpsc::{error::SendError, Sender};
 use wkt::ToWkt;
-
-use super::{
-    analyze::{ColumnType, Schema, SchemaParser},
-    error::BulkDataResult,
-    load::{csv_iter_to_string, DataLoader, DataParser},
-    options::DataFileOptions,
-    utilities::send_error_message,
-};
 
 fn column_type_from_value(value: &JsonValue) -> Option<ColumnType> {
     match value {
@@ -174,10 +172,7 @@ impl DataParser for GeoJsonParser {
         &self.0
     }
 
-    async fn spool_records(
-        self,
-        record_channel: &mut Sender<BulkDataResult<String>>,
-    ) -> Option<SendError<BulkDataResult<String>>> {
+    async fn spool_records(self, record_channel: &mut RecordSpoolChannel) -> RecordSpoolResult {
         let options = self.0;
         let reader = match options.reader() {
             Ok(r) => r,

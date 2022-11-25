@@ -10,6 +10,7 @@ use super::{
 
 pub type BulkLoadResult = Result<u64, BulkDataError>;
 pub type RecordSpoolResult = Option<SendError<BulkDataResult<String>>>;
+pub type RecordSpoolChannel = Sender<BulkDataResult<String>>;
 
 pub struct CopyOptions {
     table_name: String,
@@ -74,10 +75,7 @@ pub trait DataParser {
     type Options: DataFileOptions;
 
     fn options(&self) -> &Self::Options;
-    async fn spool_records(
-        self,
-        record_channel: &mut Sender<BulkDataResult<String>>,
-    ) -> Option<SendError<BulkDataResult<String>>>;
+    async fn spool_records(self, record_channel: &mut RecordSpoolChannel) -> RecordSpoolResult;
 }
 
 pub struct DataLoader<P: DataParser + Send + Sync + 'static>(P);

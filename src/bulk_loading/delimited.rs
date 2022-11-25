@@ -1,14 +1,13 @@
 use super::{
     analyze::{ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
-    load::{DataLoader, DataParser},
+    load::{DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult},
     options::DataFileOptions,
 };
 use std::path::PathBuf;
 use tokio::{
     fs::File as TkFile,
     io::{AsyncBufReadExt, BufReader as TkBufReader, Lines as TkLines},
-    sync::mpsc::{error::SendError, Sender},
 };
 
 pub struct DelimitedDataOptions {
@@ -103,10 +102,7 @@ impl DataParser for DelimitedDataParser {
         &self.0
     }
 
-    async fn spool_records(
-        self,
-        record_channel: &mut Sender<BulkDataResult<String>>,
-    ) -> Option<SendError<BulkDataResult<String>>> {
+    async fn spool_records(self, record_channel: &mut RecordSpoolChannel) -> RecordSpoolResult {
         let options = self.0;
         let file_path = &options.file_path;
         let Ok(mut lines) = options.async_lines().await else {

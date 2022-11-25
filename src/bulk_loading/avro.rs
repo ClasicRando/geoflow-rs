@@ -1,7 +1,9 @@
 use super::{
     analyze::{ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
-    load::{csv_result_iter_to_string, DataLoader, DataParser},
+    load::{
+        csv_result_iter_to_string, DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult,
+    },
     options::DataFileOptions,
 };
 use avro_rs::{
@@ -13,7 +15,6 @@ use chrono::{NaiveTime, TimeZone, Utc};
 use serde_json::{json, Value as JsonValue};
 use std::{collections::HashSet, fmt::Write};
 use std::{fs::File, io::BufReader, path::PathBuf};
-use tokio::sync::mpsc::{error::SendError, Sender};
 
 pub struct AvroFileOptions {
     file_path: PathBuf,
@@ -244,10 +245,7 @@ impl DataParser for AvroFileParser {
         &self.0
     }
 
-    async fn spool_records(
-        self,
-        record_channel: &mut Sender<BulkDataResult<String>>,
-    ) -> Option<SendError<BulkDataResult<String>>> {
+    async fn spool_records(self, record_channel: &mut RecordSpoolChannel) -> RecordSpoolResult {
         let options = self.0;
         let reader = match options.reader() {
             Ok(reader) => reader,
