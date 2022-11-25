@@ -100,7 +100,11 @@ impl<P: DataParser + Send + Sync + 'static> DataLoader<P> {
             match rx.recv().await {
                 Some(Ok(record)) => {
                     if let Err(error) = copy.send(record.as_bytes()).await {
-                        break Err(error.into());
+                        break Err(format!(
+                            "Error trying to send record \"{}\".\n{}",
+                            record, error
+                        )
+                        .into());
                     }
                 }
                 Some(Err(error)) => break Err(error),
