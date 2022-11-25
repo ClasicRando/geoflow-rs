@@ -186,19 +186,19 @@ impl Schema {
 
     pub fn copy_options(&self, db_schema: &str) -> CopyOptions {
         CopyOptions::from_vec(
-            format!("{}.{}", db_schema, self.table_name),
+            format!("{}.\"{}\"", db_schema, self.table_name),
             self.columns.iter().map(|c| c.name().to_owned()).collect(),
         )
     }
 
     pub fn create_statement(&self, db_schema: &str) -> String {
         format!(
-            "create table {}.{}({})",
+            "create table {}.\"{}\"({})",
             db_schema,
             &self.table_name,
             self.columns
                 .iter()
-                .map(|c| format!("{} {}", &c.name, c.column_type.pg_name()))
+                .map(|c| format!("\"{}\" {}", &c.name, c.column_type.pg_name()))
                 .join(",")
         )
     }

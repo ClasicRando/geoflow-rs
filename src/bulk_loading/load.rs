@@ -33,9 +33,9 @@ impl CopyOptions {
 
     fn copy_statement<O: DataFileOptions>(&self, options: &O) -> String {
         format!(
-            "COPY {} ({}) FROM STDIN WITH (FORMAT csv, DELIMITER '{}', HEADER {}, NULL ''{})",
+            "COPY {} (\"{}\") FROM STDIN WITH (FORMAT csv, DELIMITER '{}', HEADER {}, NULL ''{})",
             self.table_name.to_lowercase(),
-            self.columns.join(","),
+            self.columns.join("\",\""),
             options.delimiter(),
             if *options.header() { "true" } else { "false" },
             if *options.qualified() {
