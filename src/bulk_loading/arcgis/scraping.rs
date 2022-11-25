@@ -1,5 +1,5 @@
 use crate::bulk_loading::error::{BulkDataError, BulkDataResult};
-use geojson::{feature::Id, Feature, FeatureCollection, Geometry, Value as GeomValue, GeoJson};
+use geojson::{feature::Id, Feature, FeatureCollection, GeoJson, Geometry, Value as GeomValue};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -30,9 +30,13 @@ impl QueryFormat {
         let feature_collection = match self {
             Self::GeoJSON => match response.json::<GeoJson>().await? {
                 GeoJson::FeatureCollection(collection) => collection,
-                GeoJson::Geometry(_) => return Err("Expected a Feature collect but got Geometry".into()),
-                GeoJson::Feature(_) => return Err("Expected a Feature collect but got Feature".into()),
-            }
+                GeoJson::Geometry(_) => {
+                    return Err("Expected a Feature collect but got Geometry".into())
+                }
+                GeoJson::Feature(_) => {
+                    return Err("Expected a Feature collect but got Feature".into())
+                }
+            },
             Self::JSON => response.json::<JsonQueryResponse>().await?.into(),
             Self::NotSupported(name) => {
                 return Err(
@@ -176,9 +180,15 @@ mod tests {
 
         assert_eq!(QueryFormat::GeoJSON, query_format_geo_json);
         assert_eq!(QueryFormat::JSON, query_format_json);
-        assert_eq!(QueryFormat::NotSupported(other.to_lowercase()), query_format_other);
+        assert_eq!(
+            QueryFormat::NotSupported(other.to_lowercase()),
+            query_format_other
+        );
         assert_eq!(QueryFormat::GeoJSON, query_format_multi_geo_json);
         assert_eq!(QueryFormat::JSON, query_format_multi_json);
-        assert_eq!(QueryFormat::NotSupported(other.to_lowercase()), query_format_multi_other);
+        assert_eq!(
+            QueryFormat::NotSupported(other.to_lowercase()),
+            query_format_multi_other
+        );
     }
 }

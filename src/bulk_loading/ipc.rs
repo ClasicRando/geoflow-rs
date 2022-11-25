@@ -1,7 +1,7 @@
 use super::{
     analyze::{Schema, SchemaParser},
     error::BulkDataResult,
-    load::{DataParser, DataLoader},
+    load::{DataLoader, DataParser},
     options::DataFileOptions,
     utilities::{schema_from_dataframe, spool_dataframe_records},
 };

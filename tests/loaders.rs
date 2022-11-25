@@ -2,12 +2,13 @@ use geoflow_rs::{
     bulk_loading::{
         analyze::{ColumnType, SchemaAnalyzer},
         arcgis::ArcGisDataOptions,
+        avro::AvroFileOptions,
         delimited::DelimitedDataOptions,
         excel::ExcelOptions,
         geo_json::GeoJsonOptions,
         ipc::IpcFileOptions,
         parquet::ParquetFileOptions,
-        shape::ShapeDataOptions, avro::AvroFileOptions,
+        shape::ShapeDataOptions,
     },
     database::create_db_pool,
 };
@@ -673,7 +674,11 @@ async fn avro_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     .await?;
     let create_statement = schema.create_statement(db_schema);
     if let Err(error) = sqlx::query(&create_statement).execute(&pool).await {
-        return Err(format!("Error attempting to execute create statement \"{}\".\n{}", create_statement, error).into());
+        return Err(format!(
+            "Error attempting to execute create statement \"{}\".\n{}",
+            create_statement, error
+        )
+        .into());
     }
 
     let loader = analyzer.loader();

@@ -9,7 +9,7 @@ use wkt::ToWkt;
 use super::{
     analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
     error::BulkDataResult,
-    load::{csv_result_iter_to_string, DataParser, DataLoader},
+    load::{csv_result_iter_to_string, DataLoader, DataParser},
     options::DataFileOptions,
 };
 
@@ -163,10 +163,7 @@ impl DataParser for ShapeDataParser {
         let options = self.0;
         let fields = match options.fields() {
             Ok(fields) => fields,
-            Err(error) => return record_channel
-                .send(Err(error))
-                .await
-                .err(),
+            Err(error) => return record_channel.send(Err(error)).await.err(),
         };
         let mut reader = match options.reader() {
             Ok(reader) => reader,
@@ -200,7 +197,9 @@ impl DataParser for ShapeDataParser {
                     Ok(map_field_value(field_value))
                 })
                 .chain(std::iter::once(Ok(wkt)));
-            let result = record_channel.send(csv_result_iter_to_string(csv_iter)).await;
+            let result = record_channel
+                .send(csv_result_iter_to_string(csv_iter))
+                .await;
             if let Err(error) = result {
                 return Some(error);
             }
