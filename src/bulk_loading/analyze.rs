@@ -39,7 +39,8 @@ fn clean_sql_name(name: &str) -> Option<String> {
     Some(name.to_lowercase())
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, sqlx::Type)]
+#[sqlx(type_name = "column_type")]
 pub enum ColumnType {
     Text,
     Boolean,
@@ -86,7 +87,8 @@ impl ColumnType {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, sqlx::Type)]
+#[sqlx(type_name = "column_metadata")]
 pub struct ColumnMetadata {
     name: String,
     column_type: ColumnType,
@@ -128,7 +130,7 @@ impl TryFrom<(String, Option<ColumnType>)> for ColumnMetadata {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, sqlx::FromRow)]
 pub struct Schema {
     table_name: String,
     columns: Vec<ColumnMetadata>,
