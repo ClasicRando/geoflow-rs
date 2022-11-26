@@ -74,5 +74,6 @@ $BODY$;
 create table geoflow.source_data (
 	sd_id bigint primary key generated always as identity,
 	options jsonb not null,
+	table_name text not null check(table_name ~ '^[A-Z_][A-Z_0-9]{1,64}$'),
     columns geoflow.column_metadata[] not null check(geoflow.valid_column_metadata(columns))
 );
