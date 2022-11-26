@@ -10,7 +10,7 @@ use geoflow_rs::{
         parquet::ParquetFileOptions,
         shape::ShapeDataOptions,
     },
-    database::create_db_pool,
+    database::utilities::create_db_pool,
 };
 
 #[tokio::test]
