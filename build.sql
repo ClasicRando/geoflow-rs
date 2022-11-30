@@ -250,12 +250,12 @@ as $$
 declare
     check_count bigint;
 begin
-    select count(distinct run_id)
+    select count(distinct sd_id)
     into   check_count
     from   new_table;
     
     if check_count > 1 then
-        raise exception 'Cannot insert for multiple run_id';
+        raise exception 'Cannot insert for multiple sd_id';
     end if;
     
     select count(0)
