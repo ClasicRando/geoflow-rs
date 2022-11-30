@@ -76,9 +76,11 @@ create table geoflow.user_roles (
 
 create table geoflow.regions (
 	region_id bigint primary key generated always as identity,
-	country text not null check(geoflow.check_not_blank_or_empty(country)),
-    prov text,
-    county text
+    country_code text not null check(geoflow.check_not_blank_or_empty(country_code)),
+	country_name text not null check(geoflow.check_not_blank_or_empty(country_name)),
+    prov_code text check(geoflow.check_not_blank_or_empty(prov_code)),
+    prov_name text check(geoflow.check_not_blank_or_empty(prov_name)),
+    county text check(geoflow.check_not_blank_or_empty(county))
 );
 
 create table geoflow.warehouse_types (
