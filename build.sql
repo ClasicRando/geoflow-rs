@@ -58,6 +58,14 @@ create table geoflow.roles (
 	description text not null check(geoflow.check_not_blank_or_empty(description))
 );
 
+insert into geoflow.roles(name,description)
+values('admin','All privileges granted'),
+('collection','Collect data for a load instance'),
+('load','Process a data load'),
+('check','Check a load instance'),
+('create_ls','Create a new load instance'),
+('create_ds','Create a new data source');
+
 create table geoflow.users (
 	uid bigint primary key generated always as identity,
 	name text not null check(geoflow.check_not_blank_or_empty(name)),
