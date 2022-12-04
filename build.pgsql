@@ -92,6 +92,22 @@ create view geoflow.v_users as
 	from   geoflow.users u
 	join   user_roles ur on u.uid = ur.uid;
 
+create procedure geoflow.validate_password(password text)
+language plpgsql
+as $$
+begin
+	if $1 !~ '[A-Z]' then
+        raise exception 'password does meet the requirements. Must contain at least 1 uppercase character.';
+	end if;
+	if $1 !~ '\d' then
+        raise exception 'password does meet the requirements. Must contain at least 1 digit character.';
+	end if;
+	if $1 !~ '\W' then
+        raise exception 'password does meet the requirements. Must contain at least 1 non-alphanumberic character.';
+	end if;
+end;
+$$;
+
 create function geoflow.create_user(
     name text,
     username text,
@@ -105,9 +121,7 @@ as $$
 declare
 	v_uid bigint;
 begin
-	if $3 !~ '[A-Z]' or $3 !~ '\d' or $3 !~ '\W' then
-        raise exception 'password does meet the requirements. Must contain at least 1 uppercase, digit and non-alphanumberic character.';
-	end if;
+    perform geoflow.validate_password($3);
 	
     insert into geoflow.users(name,username,password)
     values($1,$2,crypt($3, gen_salt('bf')))
