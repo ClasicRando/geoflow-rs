@@ -111,7 +111,7 @@ end;
 $$;
 
 create function geoflow.validate_user(
-    uid bigint,
+    username text,
     password text
 ) returns boolean
 stable
@@ -120,7 +120,7 @@ as $$
 declare
     result boolean;
 begin
-    if $1 is null or $2 is null or geoflow.check_not_blank_or_empty($2) then
+    if $1 is null or $2 is null then
         return false;
     end if;
 
@@ -128,7 +128,7 @@ begin
         select (password = crypt($2, password))
         into   result
         from   geoflow.users
-        where  uid = $1;
+        where  username = $1;
     exception
         when no_data_found then
             return false;
