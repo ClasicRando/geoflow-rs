@@ -553,11 +553,13 @@ create table geoflow.source_data (
 	li_id bigint not null references geoflow.load_instances (li_id) match simple
         on update cascade
         on delete restrict,
-    file_id text not null check(file_id ~ '^[FU]\d+$'),
+    load_source_id smallint not null check (load_source_id > 0),
+    user_generated boolean not null default false,
 	options jsonb not null,
 	table_name text not null check(table_name ~ '^[A-Z_][A-Z_0-9]{1,64}$'),
     columns geoflow.column_metadata[] not null check(geoflow.valid_column_metadata(columns)),
-	constraint source_data_load_instance_table_name unique (li_id, table_name)
+	constraint source_data_load_instance_table_name unique (li_id, table_name),
+	constraint source_data_load_source_id unique (li_id, load_source_id)
 );
 create index source_data_li_id on geoflow.source_data(li_id);
 
