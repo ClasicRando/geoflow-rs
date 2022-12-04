@@ -81,6 +81,35 @@ create table geoflow.user_roles (
         on delete restrict
 );
 
+create function geoflow.create_user(
+    name text,
+    username text,
+    password text,
+    roles bigint[]
+) returns bigint
+volatile
+language plpgsql
+returns null on null input
+as $$
+declare
+	v_uid bigint;
+begin
+	if $3 !~ '[A-Z]' or $3 !~ '\d' or $3 !~ '\W' then
+        raise exception 'password does meet the requirements. Must contain at least 1 uppercase, digit and non-alphanumberic character.';
+	end if;
+	
+    insert into geoflow.users(name,username,password)
+    values($1,$2,crypt($3, gen_salt('bf')))
+    returning uid into v_uid;
+	
+	insert into geoflow.user_roles(uid,role_id)
+	select nu.uid, v_uid
+	from   unnest($4) r;
+
+	return v_uid;
+end;
+$$;
+
 create function geoflow.user_can_create_ds(
     geoflow_user_id bigint
 ) returns boolean
