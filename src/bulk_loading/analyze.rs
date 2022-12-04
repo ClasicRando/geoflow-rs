@@ -14,6 +14,8 @@ use super::{
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::{Regex, RegexBuilder};
+use serde::{Serialize, Deserialize};
+use sqlx::postgres::{PgHasArrayType, PgTypeInfo};
 
 lazy_static! {
     static ref SQL_NAME_REGEX: Regex = Regex::new("^[A-Z_][A-Z_0-9]{1,64}$").unwrap();
@@ -39,7 +41,7 @@ fn clean_sql_name(name: &str) -> Option<String> {
     Some(name.to_lowercase())
 }
 
-#[derive(Debug, PartialEq, Eq, sqlx::Type)]
+#[derive(Debug, PartialEq, Eq, sqlx::Type, Serialize, Deserialize)]
 #[sqlx(type_name = "column_type")]
 pub enum ColumnType {
     Text,
@@ -87,7 +89,7 @@ impl ColumnType {
     }
 }
 
-#[derive(Debug, sqlx::Type)]
+#[derive(Debug, sqlx::Type, Serialize, Deserialize)]
 #[sqlx(type_name = "column_metadata")]
 pub struct ColumnMetadata {
     name: String,
@@ -119,6 +121,12 @@ impl ColumnMetadata {
     #[inline]
     pub fn column_type(&self) -> &ColumnType {
         &self.column_type
+    }
+}
+
+impl PgHasArrayType for ColumnMetadata {
+    fn array_type_info() -> PgTypeInfo {
+        PgTypeInfo::with_name("_column_metadata")
     }
 }
 
