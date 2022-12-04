@@ -163,18 +163,29 @@ begin
 end;
 $$;
 
-create procedure geoflow.update_user_password(
+create function geoflow.update_user_password(
     username text,
-    password text
-)
+    old_password text,
+    new_password text
+) returns bigint
+volatile
 language plpgsql
 as $$
+declare
+	v_uid bigint;
 begin
-    perform geoflow.validate_password($2);
+    if not geoflow.validate_user($1, $2) then
+        raise exception 'Could not validate the old password for the username of "%s"', $1;
+    end if;
+
+    perform geoflow.validate_password($3);
 	
     update geoflow.users
-    set    password = crypt($2, gen_salt('bf'))
-    where  username = $1;
+    set    password = crypt($3, gen_salt('bf'))
+    where  username = $1
+	returning uid into v_uid;
+	
+	return v_uid;
 end;
 $$;
 
