@@ -14,7 +14,7 @@ use crate::bulk_loading::{
     options::DataOptions,
     utilities::send_error_message,
 };
-use chrono::{TimeZone, Utc};
+use chrono::{TimeZone, Utc, LocalResult};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -80,7 +80,9 @@ fn map_arcgis_value(value: &Value, field: &ServiceField) -> BulkDataResult<Strin
                 let Some(milliseconds) = n.as_i64() else {
                         return Err(format!("Number of {} cannot be converted to i64", n).into())
                     };
-                let dt = Utc.timestamp_millis(milliseconds);
+                let LocalResult::Single(dt) = Utc.timestamp_millis_opt(milliseconds) else {
+                    return Err(format!("Value of {} ms cannot be converted to a timestamp", milliseconds).into())
+                };
                 format!("{}", dt.format("%Y-%m-%d %H:%M:%S"))
             }
             _ => return Err("Date fields should only contain numbers or null".into()),

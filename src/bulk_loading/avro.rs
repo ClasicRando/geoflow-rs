@@ -11,7 +11,7 @@ use avro_rs::{
     types::Value,
     Duration, Reader,
 };
-use chrono::{NaiveTime, TimeZone, Utc};
+use chrono::{LocalResult, NaiveTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use std::{collections::HashSet, fmt::Write};
@@ -131,9 +131,11 @@ fn convert_time_nano_secs_to_string(value: i64) -> BulkDataResult<String> {
 }
 
 #[inline]
-fn convert_timestamp_secs_to_string(value: i64) -> String {
-    let dt = Utc.timestamp(value, 0);
-    format!("{}", dt.format("%Y-%m-%d %H:%M:%S"))
+fn convert_timestamp_secs_to_string(value: i64) -> BulkDataResult<String> {
+    let LocalResult::Single(dt) = Utc.timestamp_opt(value, 0) else {
+        return Err(format!("Could not convert {} secs to Timestamp", value).into())
+    };
+    Ok(format!("{}", dt.format("%Y-%m-%d %H:%M:%S")))
 }
 
 #[inline]
@@ -218,14 +220,16 @@ fn map_avro_value(value: Value) -> BulkDataResult<String> {
         Value::Record(_) | Value::Map(_) | Value::Array(_) => serialize_to_json_value(value)?,
         Value::Date(d) => {
             static NUM_SECONDS_IN_DAY: i64 = 60 * 60 * 24;
-            let dt = Utc.timestamp(d as i64 * NUM_SECONDS_IN_DAY, 0).date();
+            let LocalResult::Single(dt) = Utc.timestamp_opt(d as i64 * NUM_SECONDS_IN_DAY, 0) else {
+                return Err(format!("Could not convert {} days to Timestamp", d).into())
+            };
             format!("{}", dt.format("%Y-%m-%d"))
         }
         Value::Decimal(ref d) => small_int_array_literal(d.try_into()?)?,
         Value::TimeMillis(t) => convert_time_nano_secs_to_string(t as i64 * 1_000_000)?,
         Value::TimeMicros(t) => convert_time_nano_secs_to_string(t as i64 * 1_000)?,
-        Value::TimestampMillis(t) => convert_timestamp_secs_to_string(t as i64 / 1_000),
-        Value::TimestampMicros(t) => convert_timestamp_secs_to_string(t as i64 / 1_000_000),
+        Value::TimestampMillis(t) => convert_timestamp_secs_to_string(t as i64 / 1_000)?,
+        Value::TimestampMicros(t) => convert_timestamp_secs_to_string(t as i64 / 1_000_000)?,
         Value::Duration(d) => duration_to_json_value(d),
         Value::Uuid(u) => u.to_string(),
     })
@@ -824,8 +828,12 @@ mod tests {
 
     #[test]
     fn map_avro_value_should_return_formatted_date_when_date_value() -> BulkDataResult<()> {
-        let epoch_date = NaiveDate::from_ymd(1970, 1, 1);
-        let date = NaiveDate::from_ymd(2000, 1, 1);
+        let Some(epoch_date) = NaiveDate::from_ymd_opt(1970, 1, 1) else {
+            return Err("Could not create a date for epoch. This should never fail".into())
+        };
+        let Some(date) = NaiveDate::from_ymd_opt(2000, 1, 1) else {
+            return Err("Could not create a date for Jan 1, 2000. This should never fail".into())
+        };
         let value = Value::Date(date.signed_duration_since(epoch_date).num_days() as i32);
 
         let result = map_avro_value(value)?;
@@ -874,8 +882,12 @@ mod tests {
     fn map_avro_value_should_return_formatted_timestamp_when_timestamp_value() -> BulkDataResult<()>
     {
         let expected_result = "2000-01-01 05:30:05";
-        let date = NaiveDate::from_ymd(2000, 1, 1);
-        let time = NaiveTime::from_hms(5, 30, 5);
+        let Some(date) = NaiveDate::from_ymd_opt(2000, 1, 1) else {
+            return Err("Could not create a date for Jan 1, 2000. This should never fail".into())
+        };
+        let Some(time) = NaiveTime::from_hms_opt(5, 30, 5) else {
+            return Err("Could not create a time for 05:30:05. This should never fail".into())
+        };
         let date_time = NaiveDateTime::new(date, time);
 
         let millis_value = Value::TimestampMillis(date_time.timestamp_millis());
