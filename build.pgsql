@@ -81,6 +81,17 @@ create table geoflow.user_roles (
         on delete restrict
 );
 
+create view geoflow.v_users as
+	with user_roles as (
+		select ur.uid, array_agg(r) roles
+		from   geoflow.user_roles ur
+		join   geoflow.roles r on ur.role_id = r.role_id
+		group by ur.uid
+	)
+	select u.uid, u.name, u.username, ur.roles
+	from   geoflow.users u
+	join   user_roles ur on u.uid = ur.uid;
+
 create function geoflow.create_user(
     name text,
     username text,
