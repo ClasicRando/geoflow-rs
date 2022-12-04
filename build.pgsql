@@ -1,4 +1,4 @@
-create schema geoflow;IF 
+create schema geoflow;
 
 create function geoflow.check_not_blank_or_empty(
 	text
