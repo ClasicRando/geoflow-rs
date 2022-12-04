@@ -138,6 +138,21 @@ begin
 end;
 $$;
 
+create function geoflow.user_is_admin(
+    geoflow_user_id bigint
+) returns boolean
+stable
+language sql
+as $$
+    select exists(
+        select 1
+        from   geoflow.user_roles ur
+        join   geoflow.roles r on ur.role_id = r.role_id
+        where  ur.uid = $1
+        and    r.name = 'admin'
+    );
+$$;
+
 create function geoflow.user_can_create_ds(
     geoflow_user_id bigint
 ) returns boolean
