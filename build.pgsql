@@ -163,6 +163,21 @@ begin
 end;
 $$;
 
+create procedure geoflow.update_user_password(
+    username text,
+    password text
+)
+language plpgsql
+as $$
+begin
+    perform geoflow.validate_password($2);
+	
+    update geoflow.users
+    set    password = crypt($2, gen_salt('bf'))
+    where  username = $1;
+end;
+$$;
+
 create function geoflow.user_is_admin(
     geoflow_user_id bigint
 ) returns boolean
