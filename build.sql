@@ -507,20 +507,9 @@ create function geoflow.user_can_update_ls(
     ls_id bigint
 ) returns boolean
 stable
-language plpgsql
+language sql
 as $$
-declare
-	is_admin boolean;
-	is_part_of_ls boolean;
-begin
-    select exists(
-        select 1
-        from   geoflow.user_roles ur
-        join   geoflow.roles r on ur.role_id = r.role_id
-        where  ur.uid = $1
-        and    r.name = 'admin'
-    ) into is_admin;
-	select exists(
+	select (exists(
         select 1
         from   geoflow.load_instances
         where  ls_id = $2
@@ -529,9 +518,7 @@ begin
             load_user_id = $1 or
             check_user_id = $1
         )
-    ) into is_part_of_ls;
-	return is_admin or is_part_of_ls;
-end;
+    )) or geoflow.user_is_admin($1);
 $$;
 
 create function geoflow.load_instances_change()
