@@ -457,7 +457,7 @@ impl<'u> ArcGisRestMetadata<'u> {
             };
             Ok(vec![
                 ("geometryType", geometry_type.name()),
-                ("outSR", "4269"),
+                ("outSR", "4326"),
             ])
         }
     }
