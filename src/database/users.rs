@@ -1,3 +1,9 @@
+use rocket::{
+    http::Status,
+    outcome::IntoOutcome,
+    request::{FromRequest, Outcome},
+    Request,
+};
 use serde::{Deserialize, Serialize};
 use sqlx::{
     postgres::{PgHasArrayType, PgTypeInfo},
@@ -16,6 +22,27 @@ pub struct User {
     password: String,
     #[serde(default)]
     roles: Vec<UserRole>,
+}
+
+#[rocket::async_trait]
+impl<'r> FromRequest<'r> for User {
+    type Error = &'static str;
+
+    async fn from_request(req: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        let Some(pool) = req.rocket().state::<PgPool>() else {
+            return Outcome::Failure((Status::InternalServerError, "Could not initialize a database connection"))
+        };
+        let Some(cookie) = req.cookies().get_private("x-geoflow-uid") else {
+            return Outcome::Forward(());
+        };
+        let Ok(uid) = cookie.value().parse() else {
+            return Outcome::Failure((Status::BadRequest, "Could not parse a value for cookie \"x-geoflow-uid\""))
+        };
+        match User::read_one(uid, pool).await {
+            Ok(user) => user.or_forward(()),
+            Err(_) => Outcome::Failure((Status::InternalServerError, "Could not fetch a user")),
+        }
+    }
 }
 
 #[derive(sqlx::Type, Serialize, Deserialize)]
