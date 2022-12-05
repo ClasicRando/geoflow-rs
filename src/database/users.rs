@@ -24,6 +24,12 @@ pub struct User {
     roles: Vec<UserRole>,
 }
 
+impl User {
+    pub fn is_admin(&self) -> bool {
+        self.roles.iter().any(|r| r.name == "admin")
+    }
+}
+
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for User {
     type Error = &'static str;
