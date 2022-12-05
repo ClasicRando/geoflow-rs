@@ -29,7 +29,24 @@ pub async fn login(
 #[get("/api/v1/users/<uid>")]
 pub async fn read_user(uid: i64, user: User) -> ApiResponse<User> {
     if user.is_admin() || user.uid == uid {
-        return ApiResponse::success(user)
+        return ApiResponse::success(user);
     }
-    ApiResponse::failure(400, format!("Current user does not have privileges to view uid = {}", uid))
+    ApiResponse::failure(
+        400,
+        format!(
+            "Current user does not have privileges to view uid = {}",
+            uid
+        ),
+    )
+}
+
+#[get("/api/v1/users")]
+pub async fn read_users(user: User, pool: &State<PgPool>) -> ApiResponse<Vec<User>> {
+    if !user.is_admin() {
+        return ApiResponse::failure(
+            400,
+            "Current user does not have privileges to view users".to_string(),
+        );
+    }
+    User::read_many(pool).await.into()
 }
