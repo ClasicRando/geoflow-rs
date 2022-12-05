@@ -26,11 +26,8 @@ pub async fn login(
     }
 }
 
-#[post("/api/v1/users/<uid>")]
-pub async fn read_user(
-    uid: i64,
-    user: User,
-) -> ApiResponse<User> {
+#[get("/api/v1/users/<uid>")]
+pub async fn read_user(uid: i64, user: User) -> ApiResponse<User> {
     if user.is_admin() || user.uid == uid {
         return ApiResponse::success(user)
     }
