@@ -25,3 +25,14 @@ pub async fn login(
         Err(error) => ApiResponse::failure_with_error(error),
     }
 }
+
+#[post("/api/v1/users/<uid>")]
+pub async fn read_user(
+    uid: i64,
+    user: User,
+) -> ApiResponse<User> {
+    if user.is_admin() || user.uid == uid {
+        return ApiResponse::success(user)
+    }
+    ApiResponse::failure(400, format!("Current user does not have privileges to view uid = {}", uid))
+}
