@@ -138,25 +138,23 @@ $$;
 create function geoflow.validate_user(
     username text,
     password text
-) returns boolean
+) returns bigint
 stable
 language plpgsql
+returns null on null input
 as $$
 declare
-    result boolean;
+    result bigint;
 begin
-    if $1 is null or $2 is null then
-        return false;
-    end if;
-
     begin
-        select (password = crypt($2, password))
+        select uid
         into   result
         from   geoflow.users
-        where  username = $1;
+        where  username = $1
+        and    password = crypt($2, password);
     exception
         when no_data_found then
-            return false;
+            return null;
     end;
     
     return result;
@@ -174,7 +172,7 @@ as $$
 declare
 	v_uid bigint;
 begin
-    if not geoflow.validate_user($1, $2) then
+    if geoflow.validate_user($1, $2) is not null then
         raise exception 'Could not validate the old password for the username of "%s"', $1;
     end if;
 
