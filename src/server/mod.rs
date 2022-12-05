@@ -7,7 +7,7 @@ use bulk_loading::{
     update_source_data,
 };
 use rocket::{routes, Build, Rocket};
-use users::{login, read_user, read_users};
+use users::{create_user, login, read_user, read_users};
 
 pub async fn build_server() -> Result<Rocket<Build>, sqlx::Error> {
     let pool = create_db_pool().await?;
@@ -20,6 +20,7 @@ pub async fn build_server() -> Result<Rocket<Build>, sqlx::Error> {
             update_source_data,
             delete_source_data,
             login,
+            create_user,
             read_user,
             read_users,
         ],

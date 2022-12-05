@@ -26,6 +26,25 @@ pub async fn login(
     }
 }
 
+#[post("/api/v1/users", data = "<user>")]
+pub async fn create_user(
+    user: MsgPack<User>,
+    pool: &State<PgPool>,
+    current_user: User,
+) -> ApiResponse<User> {
+    if !current_user.is_admin() {
+        return ApiResponse::failure(
+            400,
+            "Current user does not have privileges to create users".to_string(),
+        );
+    }
+    match user.0.create_user(pool).await {
+        Ok(Some(user)) => ApiResponse::success(user),
+        Ok(None) => ApiResponse::failure(400, String::from("Failed to create a new user")),
+        Err(error) => ApiResponse::failure_with_error(error),
+    }
+}
+
 #[get("/api/v1/users/<uid>")]
 pub async fn read_user(uid: i64, user: User) -> ApiResponse<User> {
     if user.is_admin() || user.uid == uid {
