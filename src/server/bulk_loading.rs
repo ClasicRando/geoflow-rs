@@ -9,10 +9,7 @@ pub async fn create_source_data(
     source_data: MsgPack<SourceData>,
     pool: &State<PgPool>,
 ) -> ApiResponse<SourceData> {
-    match SourceData::create(source_data.0, pool).await {
-        Ok(source_data) => ApiResponse::success(source_data),
-        Err(error) => ApiResponse::failure_with_error(error),
-    }
+    SourceData::create(source_data.0, pool).await.into()
 }
 
 #[get("/api/v1/bulk-loading/source-data/<sd_id>")]
@@ -32,10 +29,7 @@ pub async fn read_many_source_data(
     li_id: i64,
     pool: &State<PgPool>,
 ) -> ApiResponse<Vec<SourceData>> {
-    match SourceData::read_many(li_id, pool).await {
-        Ok(records) => ApiResponse::success(records),
-        Err(error) => ApiResponse::failure_with_error(error),
-    }
+    SourceData::read_many(li_id, pool).await.into()
 }
 
 #[put("/api/v1/bulk-loading/source-data", data = "<source_data>")]
@@ -43,10 +37,7 @@ pub async fn update_source_data(
     source_data: MsgPack<SourceData>,
     pool: &State<PgPool>,
 ) -> ApiResponse<SourceData> {
-    match source_data.0.update(pool).await {
-        Ok(new_state) => ApiResponse::success(new_state),
-        Err(error) => ApiResponse::failure_with_error(error),
-    }
+    source_data.0.update(pool).await.into()
 }
 
 #[delete("/api/v1/bulk-loading/source-data/<sd_id>")]
