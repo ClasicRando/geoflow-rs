@@ -13,10 +13,10 @@ use sqlx::{
 #[derive(sqlx::FromRow, Serialize, Deserialize)]
 pub struct User {
     #[serde(default)]
-    uid: i64,
+    pub uid: i64,
     #[serde(default)]
-    name: String,
-    username: String,
+    pub name: String,
+    pub username: String,
     #[serde(skip_serializing)]
     #[sqlx(default)]
     password: String,
