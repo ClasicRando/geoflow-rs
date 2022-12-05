@@ -83,12 +83,16 @@ impl User {
         Self::read_one(uid, pool).await
     }
 
-    pub async fn validate_user(&self, pool: &PgPool) -> Result<bool, sqlx::Error> {
-        sqlx::query_scalar("select geoflow.validate_user($1,$2)")
+    pub async fn validate_user(&self, pool: &PgPool) -> Result<Option<Self>, sqlx::Error> {
+        let result: Option<i64> = sqlx::query_scalar("select geoflow.validate_user($1,$2)")
             .bind(&self.username)
             .bind(&self.password)
-            .fetch_one(pool)
-            .await
+            .fetch_optional(pool)
+            .await?;
+        let Some(uid) = result else {
+            return Ok(None)
+        };
+        Self::read_one(uid, pool).await
     }
 
     pub async fn read_one(uid: i64, pool: &PgPool) -> Result<Option<Self>, sqlx::Error> {
