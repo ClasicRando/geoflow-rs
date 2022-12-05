@@ -4,7 +4,7 @@ use workflow_engine::ApiResponse;
 
 use crate::database::source_data::SourceData;
 
-#[post("/bulk-loading/source-data", data = "<source_data>")]
+#[post("/api/v1/bulk-loading/source-data", data = "<source_data>")]
 pub async fn create_source_data(
     source_data: MsgPack<SourceData>,
     pool: &State<PgPool>,
@@ -15,7 +15,7 @@ pub async fn create_source_data(
     }
 }
 
-#[get("/bulk-loading/source-data/<sd_id>")]
+#[get("/api/v1/bulk-loading/source-data/<sd_id>")]
 pub async fn read_single_source_data(sd_id: i64, pool: &State<PgPool>) -> ApiResponse<SourceData> {
     match SourceData::read_single(sd_id, pool).await {
         Ok(Some(record)) => ApiResponse::success(record),
@@ -27,7 +27,7 @@ pub async fn read_single_source_data(sd_id: i64, pool: &State<PgPool>) -> ApiRes
     }
 }
 
-#[get("/bulk-loading/source-data/load-instance/<li_id>")]
+#[get("/api/v1/bulk-loading/source-data/load-instance/<li_id>")]
 pub async fn read_many_source_data(
     li_id: i64,
     pool: &State<PgPool>,
@@ -38,7 +38,7 @@ pub async fn read_many_source_data(
     }
 }
 
-#[put("/bulk-loading/source-data", data = "<source_data>")]
+#[put("/api/v1/bulk-loading/source-data", data = "<source_data>")]
 pub async fn update_source_data(
     source_data: MsgPack<SourceData>,
     pool: &State<PgPool>,
@@ -49,7 +49,7 @@ pub async fn update_source_data(
     }
 }
 
-#[delete("/bulk-loading/source-data/<sd_id>")]
+#[delete("/api/v1/bulk-loading/source-data/<sd_id>")]
 pub async fn delete_source_data(sd_id: i64, pool: &State<PgPool>) -> ApiResponse<SourceData> {
     match SourceData::delete(sd_id, pool).await {
         Ok(Some(record)) => ApiResponse::success(record),
