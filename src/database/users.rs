@@ -39,7 +39,7 @@ impl<'r> FromRequest<'r> for User {
             return Outcome::Failure((Status::InternalServerError, "Could not initialize a database connection"))
         };
         let Some(cookie) = req.cookies().get_private("x-geoflow-uid") else {
-            return Outcome::Forward(());
+            return Outcome::Failure((Status::BadRequest, "This endpoint requires an authenticated user"))
         };
         let Ok(uid) = cookie.value().parse() else {
             return Outcome::Failure((Status::BadRequest, "Could not parse a value for cookie \"x-geoflow-uid\""))
