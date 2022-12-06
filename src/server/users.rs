@@ -1,10 +1,11 @@
 use rocket::{
-    delete, get,
+    get,
     http::{Cookie, CookieJar},
-    post, put,
+    patch, post,
     serde::msgpack::MsgPack,
     State,
 };
+use serde::Deserialize;
 use sqlx::postgres::PgPool;
 use workflow_engine::ApiResponse;
 
@@ -68,4 +69,24 @@ pub async fn read_users(user: User, pool: &State<PgPool>) -> ApiResponse<Vec<Use
         );
     }
     User::read_many(pool).await.into()
+}
+
+#[derive(Deserialize)]
+pub struct UpdatePassword {
+    old_password: String,
+    new_password: String,
+}
+
+#[patch("/api/v1/users/update-password", data = "<update_password>")]
+pub async fn update_user_password(
+    update_password: MsgPack<UpdatePassword>,
+    user: User,
+    pool: &State<PgPool>,
+) -> ApiResponse<User> {
+    let UpdatePassword { old_password, new_password} = update_password.0;
+    match User::update_password(user.username, old_password, new_password, pool).await {
+        Ok(Some(user)) => ApiResponse::success(user),
+        Ok(None) => ApiResponse::failure(400, String::from("Failed to update the user password")),
+        Err(error) => ApiResponse::failure_with_error(error),
+    }
 }
