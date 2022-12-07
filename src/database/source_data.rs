@@ -18,20 +18,17 @@ pub struct SourceData {
 }
 
 impl SourceData {
-    pub async fn create(mut data: Self, pool: &PgPool) -> Result<Self, sqlx::Error> {
-        let (sd_id, load_source_id): (i64, i16) = sqlx::query_as(
-            r#"
-            insert into geoflow.source_data(li_id,user_generated,options,table_name,columns)
-            values($1,$2,$3,$4,$5)
-            returning sd_id, load_source_id"#,
-        )
-        .bind(data.li_id)
-        .bind(data.user_generated)
-        .bind(&data.options)
-        .bind(&data.table_name)
-        .bind(&data.columns)
-        .fetch_one(pool)
-        .await?;
+    pub async fn create(mut data: Self, uid: i64, pool: &PgPool) -> Result<Self, sqlx::Error> {
+        let (sd_id, load_source_id): (i64, i16) =
+            sqlx::query_as("select geoflow.create_source_data_entry($1,$2,$3,$4,$5,$6)")
+                .bind(uid)
+                .bind(data.li_id)
+                .bind(data.user_generated)
+                .bind(&data.options)
+                .bind(&data.table_name)
+                .bind(&data.columns)
+                .fetch_one(pool)
+                .await?;
         data.sd_id = sd_id;
         data.load_source_id = load_source_id;
         Ok(data)

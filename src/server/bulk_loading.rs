@@ -2,14 +2,15 @@ use rocket::{delete, get, post, put, serde::msgpack::MsgPack, State};
 use sqlx::postgres::PgPool;
 use workflow_engine::ApiResponse;
 
-use crate::database::source_data::SourceData;
+use crate::database::{source_data::SourceData, users::User};
 
 #[post("/api/v1/bulk-loading/source-data", data = "<source_data>")]
 pub async fn create_source_data(
     source_data: MsgPack<SourceData>,
     pool: &State<PgPool>,
+    user: User,
 ) -> ApiResponse<SourceData> {
-    SourceData::create(source_data.0, pool).await.into()
+    SourceData::create(source_data.0, user.uid, pool).await.into()
 }
 
 #[get("/api/v1/bulk-loading/source-data/<sd_id>")]
