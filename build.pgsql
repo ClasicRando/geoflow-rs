@@ -671,6 +671,29 @@ create table geoflow.source_data (
 );
 create index source_data_li_id on geoflow.source_data(li_id);
 
+create function geoflow.create_source_data_entry(
+	geoflow_user_id bigint,
+	li_id bigint,
+	user_generated boolean,
+	options jsonb,
+	table_name text,
+	columns geoflow.column_metadata[],
+	out sd_id bigint,
+	out load_source_id smallint
+)
+volatile
+language plpgsql
+as $$
+begin
+	if not geoflow.user_can_update_ls($1) then
+        raise exception 'uid %s cannot create a new source data entry. User must be part of the load instance.', $1;
+	end if;
+	insert into geoflow.source_data(li_id,user_generated,options,table_name,columns)
+	values($2,$3,$4,$5,$6)
+	returning sd_id, load_source_id into $7, $8;
+end;
+$$;
+
 create function geoflow.plotting_methods_change()
 returns trigger
 language plpgsql
