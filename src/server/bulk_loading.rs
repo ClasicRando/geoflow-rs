@@ -1,6 +1,6 @@
 use rocket::{delete, get, post, put, serde::msgpack::MsgPack, State};
 use sqlx::postgres::PgPool;
-use workflow_engine::ApiResponse;
+use workflow_engine::server::MsgPackApiResponse;
 
 use crate::database::{source_data::SourceData, users::User};
 
@@ -9,19 +9,18 @@ pub async fn create_source_data(
     source_data: MsgPack<SourceData>,
     pool: &State<PgPool>,
     user: User,
-) -> ApiResponse<SourceData> {
+) -> MsgPackApiResponse<SourceData> {
     SourceData::create(source_data.0, user.uid, pool).await.into()
 }
 
 #[get("/api/v1/bulk-loading/source-data/<sd_id>")]
-pub async fn read_single_source_data(sd_id: i64, pool: &State<PgPool>) -> ApiResponse<SourceData> {
+pub async fn read_single_source_data(sd_id: i64, pool: &State<PgPool>) -> MsgPackApiResponse<SourceData> {
     match SourceData::read_single(sd_id, pool).await {
-        Ok(Some(record)) => ApiResponse::success(record),
-        Ok(None) => ApiResponse::failure(
-            400,
+        Ok(Some(record)) => MsgPackApiResponse::success(record),
+        Ok(None) => MsgPackApiResponse::failure(
             format!("Could not find a record for sd_id = {}", sd_id),
         ),
-        Err(error) => ApiResponse::failure_with_error(error),
+        Err(error) => MsgPackApiResponse::error(error),
     }
 }
 
@@ -29,7 +28,7 @@ pub async fn read_single_source_data(sd_id: i64, pool: &State<PgPool>) -> ApiRes
 pub async fn read_many_source_data(
     li_id: i64,
     pool: &State<PgPool>,
-) -> ApiResponse<Vec<SourceData>> {
+) -> MsgPackApiResponse<Vec<SourceData>> {
     SourceData::read_many(li_id, pool).await.into()
 }
 
@@ -37,18 +36,20 @@ pub async fn read_many_source_data(
 pub async fn update_source_data(
     source_data: MsgPack<SourceData>,
     pool: &State<PgPool>,
-) -> ApiResponse<SourceData> {
+) -> MsgPackApiResponse<SourceData> {
     source_data.0.update(pool).await.into()
 }
 
 #[delete("/api/v1/bulk-loading/source-data/<sd_id>")]
-pub async fn delete_source_data(sd_id: i64, pool: &State<PgPool>) -> ApiResponse<SourceData> {
+pub async fn delete_source_data(
+    sd_id: i64,
+    pool: &State<PgPool>,
+) -> MsgPackApiResponse<SourceData> {
     match SourceData::delete(sd_id, pool).await {
-        Ok(Some(record)) => ApiResponse::success(record),
-        Ok(None) => ApiResponse::failure(
-            400,
+        Ok(Some(record)) => MsgPackApiResponse::success(record),
+        Ok(None) => MsgPackApiResponse::failure(
             format!("Could not find a record for sd_id = {}", sd_id),
         ),
-        Err(error) => ApiResponse::failure_with_error(error),
+        Err(error) => MsgPackApiResponse::error(error),
     }
 }

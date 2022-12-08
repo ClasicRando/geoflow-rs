@@ -7,7 +7,7 @@ use rocket::{
 };
 use serde::Deserialize;
 use sqlx::postgres::PgPool;
-use workflow_engine::ApiResponse;
+use workflow_engine::server::MsgPackApiResponse;
 
 use crate::database::users::User;
 
@@ -16,14 +16,16 @@ pub async fn login(
     user: MsgPack<User>,
     pool: &State<PgPool>,
     cookies: &CookieJar<'_>,
-) -> ApiResponse<User> {
+) -> MsgPackApiResponse<User> {
     match user.0.validate_user(pool).await {
         Ok(Some(user)) => {
             cookies.add_private(Cookie::new("x-geoflow-uid", user.uid.to_string()));
-            ApiResponse::success(user)
+            MsgPackApiResponse::success(user)
         }
-        Ok(None) => ApiResponse::failure(400, String::from("Failed to login. Invalid credentials")),
-        Err(error) => ApiResponse::failure_with_error(error),
+        Ok(None) => {
+            MsgPackApiResponse::failure(String::from("Failed to login. Invalid credentials"))
+        }
+        Err(error) => MsgPackApiResponse::error(error),
     }
 }
 
@@ -32,39 +34,34 @@ pub async fn create_user(
     user: MsgPack<User>,
     pool: &State<PgPool>,
     current_user: User,
-) -> ApiResponse<User> {
+) -> MsgPackApiResponse<User> {
     if !current_user.is_admin() {
-        return ApiResponse::failure(
-            400,
+        return MsgPackApiResponse::failure(
             "Current user does not have privileges to create users".to_string(),
         );
     }
     match user.0.create_user(pool).await {
-        Ok(Some(user)) => ApiResponse::success(user),
-        Ok(None) => ApiResponse::failure(400, String::from("Failed to create a new user")),
-        Err(error) => ApiResponse::failure_with_error(error),
+        Ok(Some(user)) => MsgPackApiResponse::success(user),
+        Ok(None) => MsgPackApiResponse::failure(String::from("Failed to create a new user")),
+        Err(error) => MsgPackApiResponse::error(error),
     }
 }
 
 #[get("/api/v1/users/<uid>")]
-pub async fn read_user(uid: i64, user: User) -> ApiResponse<User> {
+pub async fn read_user(uid: i64, user: User) -> MsgPackApiResponse<User> {
     if user.is_admin() || user.uid == uid {
-        return ApiResponse::success(user);
+        return MsgPackApiResponse::success(user);
     }
-    ApiResponse::failure(
-        400,
-        format!(
-            "Current user does not have privileges to view uid = {}",
-            uid
-        ),
-    )
+    MsgPackApiResponse::failure(format!(
+        "Current user does not have privileges to view uid = {}",
+        uid
+    ))
 }
 
 #[get("/api/v1/users")]
-pub async fn read_users(user: User, pool: &State<PgPool>) -> ApiResponse<Vec<User>> {
+pub async fn read_users(user: User, pool: &State<PgPool>) -> MsgPackApiResponse<Vec<User>> {
     if !user.is_admin() {
-        return ApiResponse::failure(
-            400,
+        return MsgPackApiResponse::failure(
             "Current user does not have privileges to view users".to_string(),
         );
     }
@@ -82,11 +79,14 @@ pub async fn update_user_password(
     update_password: MsgPack<UpdatePassword>,
     user: User,
     pool: &State<PgPool>,
-) -> ApiResponse<User> {
-    let UpdatePassword { old_password, new_password} = update_password.0;
+) -> MsgPackApiResponse<User> {
+    let UpdatePassword {
+        old_password,
+        new_password,
+    } = update_password.0;
     match User::update_password(user.username, old_password, new_password, pool).await {
-        Ok(Some(user)) => ApiResponse::success(user),
-        Ok(None) => ApiResponse::failure(400, String::from("Failed to update the user password")),
-        Err(error) => ApiResponse::failure_with_error(error),
+        Ok(Some(user)) => MsgPackApiResponse::success(user),
+        Ok(None) => MsgPackApiResponse::failure(String::from("Failed to update the user password")),
+        Err(error) => MsgPackApiResponse::error(error),
     }
 }
