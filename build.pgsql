@@ -685,7 +685,7 @@ volatile
 language plpgsql
 as $$
 begin
-	if not geoflow.user_can_update_ls($1) then
+	if not geoflow.user_can_update_ls($1, $2) then
         raise exception 'uid %s cannot create a new source data entry. User must be part of the load instance.', $1;
 	end if;
 	insert into geoflow.source_data(li_id,user_generated,options,table_name,columns)
@@ -710,16 +710,16 @@ as $$
 declare
     result geoflow.source_data;
 begin
-	if not geoflow.user_can_update_ls($1) then
+	if not geoflow.user_can_update_ls($1, $2) then
         raise exception 'uid %s cannot create a new source data entry. User must be part of the load instance.', $1;
 	end if;
     update geoflow.source_data
-    set    load_source_id = $1,
-           user_generated = $2,
-           options = $3,
-           table_name = $4,
-           columns = $5
-    where  sd_id = $6
+    set    load_source_id = $3,
+           user_generated = $4,
+           options = $5,
+           table_name = $6,
+           columns = $7
+    where  sd_id = $2
     returning sd_id, li_id, load_source_id, user_generated, options, table_name, columns into result;
     return result;
 end;
