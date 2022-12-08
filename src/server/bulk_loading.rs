@@ -36,16 +36,18 @@ pub async fn read_many_source_data(
 pub async fn update_source_data(
     source_data: MsgPack<SourceData>,
     pool: &State<PgPool>,
+    user: User,
 ) -> MsgPackApiResponse<SourceData> {
-    source_data.0.update(pool).await.into()
+    source_data.0.update(user.uid, pool).await.into()
 }
 
 #[delete("/api/v1/bulk-loading/source-data/<sd_id>")]
 pub async fn delete_source_data(
     sd_id: i64,
     pool: &State<PgPool>,
+    user: User,
 ) -> MsgPackApiResponse<SourceData> {
-    match SourceData::delete(sd_id, pool).await {
+    match SourceData::delete(sd_id, user.uid, pool).await {
         Ok(Some(record)) => MsgPackApiResponse::success(record),
         Ok(None) => MsgPackApiResponse::failure(
             format!("Could not find a record for sd_id = {}", sd_id),
