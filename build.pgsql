@@ -671,6 +671,26 @@ create table geoflow.source_data (
 );
 create index source_data_li_id on geoflow.source_data(li_id);
 
+create function geoflow.get_source_data_entry(sd_id bigint)
+returns geoflow.source_data
+stable
+language sql
+as $$
+select sd_id, li_id, load_source_id, user_generated, options, table_name, columns
+from   geoflow.source_data
+where  sd_id = $1
+$$;
+
+create function geoflow.get_source_data(li_id bigint)
+returns setof geoflow.source_data
+stable
+language sql
+as $$
+select sd_id, li_id, load_source_id, user_generated, options, table_name, columns
+from   geoflow.source_data
+where  li_id = $1
+$$;
+
 create function geoflow.create_source_data_entry(
 	geoflow_user_id bigint,
 	li_id bigint,
