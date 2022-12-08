@@ -725,6 +725,27 @@ begin
 end;
 $$;
 
+create function geoflow.delete_source_data_entry(
+	geoflow_user_id bigint,
+    sd_id bigint
+) returns geoflow.source_data
+volatile
+language plpgsql
+returns null on null input
+as $$
+declare
+    result geoflow.source_data;
+begin
+	if not geoflow.user_can_update_ls($1, $2) then
+        raise exception 'uid %s cannot create a new source data entry. User must be part of the load instance.', $1;
+	end if;
+	delete from geoflow.source_data
+	where  sd_id = $2
+	returning sd_id, li_id, load_source_id, user_generated, options, table_name, columns into result;
+    return result;
+end;
+$$;
+
 create function geoflow.plotting_methods_change()
 returns trigger
 language plpgsql
