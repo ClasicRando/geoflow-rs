@@ -1,4 +1,4 @@
-create schema geoflow;IF 
+create schema geoflow;
 
 create function geoflow.check_not_blank_or_empty(
 	text
@@ -80,6 +80,127 @@ create table geoflow.user_roles (
         on update cascade
         on delete restrict
 );
+
+create view geoflow.v_users as
+	with user_roles as (
+		select ur.uid, array_agg(r) roles
+		from   geoflow.user_roles ur
+		join   geoflow.roles r on ur.role_id = r.role_id
+		group by ur.uid
+	)
+	select u.uid, u.name, u.username, ur.roles
+	from   geoflow.users u
+	join   user_roles ur on u.uid = ur.uid;
+
+create procedure geoflow.validate_password(password text)
+language plpgsql
+as $$
+begin
+	if $1 !~ '[A-Z]' then
+        raise exception 'password does meet the requirements. Must contain at least 1 uppercase character.';
+	end if;
+	if $1 !~ '\d' then
+        raise exception 'password does meet the requirements. Must contain at least 1 digit character.';
+	end if;
+	if $1 !~ '\W' then
+        raise exception 'password does meet the requirements. Must contain at least 1 non-alphanumberic character.';
+	end if;
+end;
+$$;
+
+create function geoflow.create_user(
+    name text,
+    username text,
+    password text,
+    roles bigint[]
+) returns bigint
+volatile
+language plpgsql
+returns null on null input
+as $$
+declare
+	v_uid bigint;
+begin
+    perform geoflow.validate_password($3);
+	
+    insert into geoflow.users(name,username,password)
+    values($1,$2,crypt($3, gen_salt('bf')))
+    returning uid into v_uid;
+	
+	insert into geoflow.user_roles(uid,role_id)
+	select nu.uid, v_uid
+	from   unnest($4) r;
+
+	return v_uid;
+end;
+$$;
+
+create function geoflow.validate_user(
+    username text,
+    password text
+) returns bigint
+stable
+language plpgsql
+returns null on null input
+as $$
+declare
+    result bigint;
+begin
+    begin
+        select uid
+        into   result
+        from   geoflow.users
+        where  username = $1
+        and    password = crypt($2, password);
+    exception
+        when no_data_found then
+            return null;
+    end;
+    
+    return result;
+end;
+$$;
+
+create function geoflow.update_user_password(
+    username text,
+    old_password text,
+    new_password text
+) returns bigint
+volatile
+language plpgsql
+as $$
+declare
+	v_uid bigint;
+begin
+    if geoflow.validate_user($1, $2) is not null then
+        raise exception 'Could not validate the old password for the username of "%s"', $1;
+    end if;
+
+    perform geoflow.validate_password($3);
+	
+    update geoflow.users
+    set    password = crypt($3, gen_salt('bf'))
+    where  username = $1
+	returning uid into v_uid;
+	
+	return v_uid;
+end;
+$$;
+
+create function geoflow.user_is_admin(
+    geoflow_user_id bigint
+) returns boolean
+stable
+language sql
+as $$
+    select exists(
+        select 1
+        from   geoflow.user_roles ur
+        join   geoflow.roles r on ur.role_id = r.role_id
+        where  ur.uid = $1
+        and    r.name = 'admin'
+    );
+$$;
 
 create function geoflow.user_can_create_ds(
     geoflow_user_id bigint
@@ -435,20 +556,9 @@ create function geoflow.user_can_update_ls(
     ls_id bigint
 ) returns boolean
 stable
-language plpgsql
+language sql
 as $$
-declare
-	is_admin boolean;
-	is_part_of_ls boolean;
-begin
-    select exists(
-        select 1
-        from   geoflow.user_roles ur
-        join   geoflow.roles r on ur.role_id = r.role_id
-        where  ur.uid = $1
-        and    r.name = 'admin'
-    ) into is_admin;
-	select exists(
+	select (exists(
         select 1
         from   geoflow.load_instances
         where  ls_id = $2
@@ -457,9 +567,7 @@ begin
             load_user_id = $1 or
             check_user_id = $1
         )
-    ) into is_part_of_ls;
-	return is_admin or is_part_of_ls;
-end;
+    )) or geoflow.user_is_admin($1);
 $$;
 
 create function geoflow.load_instances_change()
@@ -562,6 +670,101 @@ create table geoflow.source_data (
 	constraint source_data_load_source_id unique (li_id, load_source_id)
 );
 create index source_data_li_id on geoflow.source_data(li_id);
+
+create function geoflow.get_source_data_entry(sd_id bigint)
+returns geoflow.source_data
+stable
+language sql
+as $$
+select sd_id, li_id, load_source_id, user_generated, options, table_name, columns
+from   geoflow.source_data
+where  sd_id = $1
+$$;
+
+create function geoflow.get_source_data(li_id bigint)
+returns setof geoflow.source_data
+stable
+language sql
+as $$
+select sd_id, li_id, load_source_id, user_generated, options, table_name, columns
+from   geoflow.source_data
+where  li_id = $1
+$$;
+
+create function geoflow.create_source_data_entry(
+	geoflow_user_id bigint,
+	li_id bigint,
+	user_generated boolean,
+	options jsonb,
+	table_name text,
+	columns geoflow.column_metadata[],
+	out sd_id bigint,
+	out load_source_id smallint
+)
+volatile
+language plpgsql
+as $$
+begin
+	if not geoflow.user_can_update_ls($1, $2) then
+        raise exception 'uid %s cannot create a new source data entry. User must be part of the load instance.', $1;
+	end if;
+	insert into geoflow.source_data(li_id,user_generated,options,table_name,columns)
+	values($2,$3,$4,$5,$6)
+	returning sd_id, load_source_id into $7, $8;
+end;
+$$;
+
+create function geoflow.update_source_data_entry(
+	geoflow_user_id bigint,
+    sd_id bigint,
+	li_id bigint,
+	user_generated boolean,
+	options jsonb,
+	table_name text,
+	columns geoflow.column_metadata[]
+) returns geoflow.source_data
+volatile
+language plpgsql
+returns null on null input
+as $$
+declare
+    result geoflow.source_data;
+begin
+	if not geoflow.user_can_update_ls($1, $2) then
+        raise exception 'uid %s cannot create a new source data entry. User must be part of the load instance.', $1;
+	end if;
+    update geoflow.source_data
+    set    load_source_id = $3,
+           user_generated = $4,
+           options = $5,
+           table_name = $6,
+           columns = $7
+    where  sd_id = $2
+    returning sd_id, li_id, load_source_id, user_generated, options, table_name, columns into result;
+    return result;
+end;
+$$;
+
+create function geoflow.delete_source_data_entry(
+	geoflow_user_id bigint,
+    sd_id bigint
+) returns geoflow.source_data
+volatile
+language plpgsql
+returns null on null input
+as $$
+declare
+    result geoflow.source_data;
+begin
+	if not geoflow.user_can_update_ls($1, $2) then
+        raise exception 'uid %s cannot create a new source data entry. User must be part of the load instance.', $1;
+	end if;
+	delete from geoflow.source_data
+	where  sd_id = $2
+	returning sd_id, li_id, load_source_id, user_generated, options, table_name, columns into result;
+    return result;
+end;
+$$;
 
 create function geoflow.plotting_methods_change()
 returns trigger
