@@ -152,7 +152,7 @@ impl User {
 
     pub async fn add_role(
         uid: i64,
-        role_id: i64,
+        role_id: i32,
         pool: &PgPool,
     ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query(
@@ -169,7 +169,7 @@ impl User {
 
     pub async fn remove_role(
         uid: i64,
-        role_id: i64,
+        role_id: i32,
         pool: &PgPool,
     ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query(
