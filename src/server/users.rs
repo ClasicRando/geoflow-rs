@@ -90,3 +90,20 @@ pub async fn update_user_password(
         Err(error) => MsgPackApiResponse::error(error),
     }
 }
+
+#[derive(Deserialize)]
+pub struct UpdateName(String);
+
+#[patch("/api/v1/users/update-name", data = "<update_name>")]
+pub async fn update_user_name(
+    update_name: MsgPack<UpdateName>,
+    user: User,
+    pool: &State<PgPool>,
+) -> MsgPackApiResponse<User> {
+    match User::update_name(user.uid, update_name.0 .0, pool).await {
+        Ok(Some(user)) => MsgPackApiResponse::success(user),
+        Ok(None) => MsgPackApiResponse::failure(String::from("Failed to update the user's name")),
+        Err(error) => MsgPackApiResponse::error(error),
+    }
+}
+
