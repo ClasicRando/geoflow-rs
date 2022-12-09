@@ -1,5 +1,5 @@
 use rocket::{
-    get,
+    delete, get,
     http::{Cookie, CookieJar},
     patch, post,
     serde::msgpack::MsgPack,
@@ -107,3 +107,50 @@ pub async fn update_user_name(
     }
 }
 
+#[derive(Deserialize)]
+pub struct AlterRole {
+    uid: i64,
+    role_id: i32,
+}
+
+#[post("/api/v1/users/roles", data = "<add_role>")]
+pub async fn add_user_role(
+    add_role: MsgPack<AlterRole>,
+    user: User,
+    pool: &State<PgPool>,
+) -> MsgPackApiResponse<User> {
+    if !user.is_admin() {
+        return MsgPackApiResponse::failure(
+            "Current user does not have privileges to add roles".to_string(),
+        );
+    }
+    match User::add_role(add_role.uid, add_role.role_id, pool).await {
+        Ok(Some(user)) => MsgPackApiResponse::success(user),
+        Ok(None) => MsgPackApiResponse::failure(format!(
+            "Failed to add role_id = {} for uid = {}",
+            add_role.uid, add_role.role_id
+        )),
+        Err(error) => MsgPackApiResponse::error(error),
+    }
+}
+
+#[delete("/api/v1/users/roles", data = "<remove_role>")]
+pub async fn remove_user_role(
+    remove_role: MsgPack<AlterRole>,
+    user: User,
+    pool: &State<PgPool>,
+) -> MsgPackApiResponse<User> {
+    if !user.is_admin() {
+        return MsgPackApiResponse::failure(
+            "Current user does not have privileges to add roles".to_string(),
+        );
+    }
+    match User::remove_role(remove_role.uid, remove_role.role_id, pool).await {
+        Ok(Some(user)) => MsgPackApiResponse::success(user),
+        Ok(None) => MsgPackApiResponse::failure(format!(
+            "Failed to remove role_id = {} for uid = {}",
+            remove_role.uid, remove_role.role_id
+        )),
+        Err(error) => MsgPackApiResponse::error(error),
+    }
+}
