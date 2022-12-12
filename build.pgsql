@@ -333,6 +333,8 @@ create table geoflow.users (
     password text not null
 );
 
+call audit.audit_table('geoflow.users');
+
 create table geoflow.user_roles (
 	uid bigint not null references geoflow.users (uid) match simple
         on update cascade
@@ -341,6 +343,8 @@ create table geoflow.user_roles (
         on update cascade
         on delete restrict
 );
+
+call audit.audit_table('geoflow.user_roles');
 
 create view geoflow.v_users as
 	with user_roles as (
@@ -640,6 +644,8 @@ create table geoflow.warehouse_types (
 	description text not null check(geoflow.check_not_blank_or_empty(description))
 );
 
+call audit.audit_table('geoflow.warehouse_types');
+
 insert into geoflow.warehouse_types(name,description)
 values('Current', 'Only keep the current dataset. All non-matched records are deleted.'),
 ('Archive', 'Production contains current dataset only but non-matched records are moved to a separate archive.'),
@@ -691,6 +697,8 @@ create table geoflow.data_sources (
     load_workflow bigint not null check(load_workflow > 0),
     check_workflow bigint not null check(check_workflow > 0)
 );
+
+call audit.audit_table('geoflow.data_sources');
 
 create trigger data_source_change
     before update or insert
@@ -758,6 +766,8 @@ create table geoflow.data_source_contacts (
         on delete set null
 );
 
+call audit.audit_table('geoflow.data_source_contacts');
+
 create trigger data_source_contact_change
     before update or insert
     on geoflow.data_source_contacts
@@ -811,6 +821,8 @@ create table geoflow.load_instances (
         on update cascade
         on delete set null
 );
+
+call audit.audit_table('geoflow.load_instances');
 
 create function geoflow.user_can_update_ls(
     geoflow_user_id bigint,
@@ -1100,3 +1112,5 @@ create table geoflow.plotting_fields (
     clean_city text check (geoflow.check_not_blank_or_empty(clean_city)),
     constraint plotting_fields_pk primary key (sd_id)
 );
+
+call audit.audit_table('geoflow.plotting_fields');
