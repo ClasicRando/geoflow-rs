@@ -1,3 +1,264 @@
+-- Custom implmentation of audit-trigger project, https://github.com/2ndQuadrant/audit-trigger
+create schema audit;
+revoke all on schema audit from public;
+
+comment on schema audit is 'Out-of-table audit/history logging tables and trigger functions';
+
+create type audit.audit_action as enum('I','D','U', 'T');
+
+create table audit.logged_actions (
+    event_id bigint primary key generated always as identity,
+    schema_name text not null,
+    table_name text not null,
+    relid oid not null,
+    session_user_name text,
+    action_tstamp_tx timestamp with time zone not null,
+    action_tstamp_stm timestamp with time zone not null,
+    action_tstamp_clk timestamp with time zone not null,
+    transaction_id bigint,
+    application_name text,
+    client_addr inet,
+    client_port integer,
+    client_query text,
+    action audit.audit_action not null,
+    row_data jsonb,
+    changed_fields jsonb,
+    statement_only boolean not null
+);
+
+revoke all on audit.logged_actions from public;
+
+comment on table audit.logged_actions is 'History of auditable actions on audited tables, from audit.if_modified_func()';
+comment on column audit.logged_actions.event_id is 'Unique identifier for each auditable event';
+comment on column audit.logged_actions.schema_name is 'Database schema audited table for this event is in';
+comment on column audit.logged_actions.table_name is 'Non-schema-qualified table name of table event occured in';
+comment on column audit.logged_actions.relid is 'Table OID. Changes with drop/create. Get with ''tablename''::regclass';
+comment on column audit.logged_actions.session_user_name is 'Login / session user whose statement caused the audited event';
+comment on column audit.logged_actions.action_tstamp_tx is 'Transaction start timestamp for tx in which audited event occurred';
+comment on column audit.logged_actions.action_tstamp_stm is 'Statement start timestamp for tx in which audited event occurred';
+comment on column audit.logged_actions.action_tstamp_clk is 'Wall clock time at which audited event''s trigger call occurred';
+comment on column audit.logged_actions.transaction_id is 'Identifier of transaction that made the change. May wrap, but unique paired with action_tstamp_tx.';
+comment on column audit.logged_actions.client_addr is 'IP address of client that issued query. Null for unix domain socket.';
+comment on column audit.logged_actions.client_port is 'Remote peer IP port address of client that issued query. Undefined for unix socket.';
+comment on column audit.logged_actions.client_query is 'Top-level query that caused this auditable event. May be more than one statement.';
+comment on column audit.logged_actions.application_name is 'Application name set when this audit event occurred. Can be changed in-session by client.';
+comment on column audit.logged_actions.action is 'Action type; I = insert, D = delete, U = update, T = truncate';
+comment on column audit.logged_actions.row_data is 'Record value. Null for statement-level trigger. For INSERT this is the new tuple. For DELETE and UPDATE it is the old tuple.';
+comment on column audit.logged_actions.changed_fields is 'New values of fields changed by UPDATE. Null except for row-level UPDATE events.';
+comment on column audit.logged_actions.statement_only is '''t'' if audit event is from an FOR EACH STATEMENT trigger, ''f'' for FOR EACH ROW';
+
+create index logged_actions_relid_idx on audit.logged_actions(relid);
+create index logged_actions_action_tstamp_tx_stm_idx on audit.logged_actions(action_tstamp_stm);
+create index logged_actions_action_idx on audit.logged_actions(action);
+
+create function audit.if_modified_func()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+    audit_row audit.logged_actions;
+    excluded_cols text[] := ARRAY[]::text[];
+begin
+    if TG_WHEN != 'AFTER' then
+        raise exception 'audit.if_modified_func() may only run as an AFTER trigger';
+    end if;
+
+    audit_row := row(
+        -1,                                           -- event_id
+        TG_TABLE_SCHEMA::text,                        -- schema_name
+        TG_TABLE_NAME::text,                          -- table_name
+        TG_RELID,                                     -- relation OID for much quicker searches
+        session_user::text,                           -- session_user_name
+        current_timestamp,                            -- action_tstamp_tx
+        statement_timestamp(),                        -- action_tstamp_stm
+        clock_timestamp(),                            -- action_tstamp_clk
+        txid_current(),                               -- transaction ID
+        current_setting('application_name'),          -- client application
+        inet_client_addr(),                           -- client_addr
+        inet_client_port(),                           -- client_port
+        current_query(),                              -- top-level query or queries (if multistatement) from client
+        substring(TG_OP,1,1)::audit.audit_action,     -- action
+        null, null,                                   -- row_data, changed_fields
+        'f'                                           -- statement_only
+    );
+
+    if not TG_ARGV[0]::boolean is distinct from 'f'::boolean then
+        audit_row.client_query := null;
+    end if;
+
+    if TG_ARGV[1] is not null then
+        excluded_cols := TG_ARGV[1]::text[];
+    end if;
+    
+    if TG_OP = 'UPDATE' and TG_LEVEL = 'ROW' then
+        audit_row.row_data := to_jsonb(OLD.*) - excluded_cols;
+        select jsonb_object_agg(new_row.key, new_row.value)
+        into   audit_row.changed_fields
+        from   jsonb_each_text(to_jsonb(NEW)) new_row
+        join   jsonb_each_text(audit_row.row_data) old_row on new_row.key = old_row.key
+        where  new_row.value is distinct from old_row.value;
+
+        if audit_row.changed_fields = '{}'::jsonb then
+            -- All changed fields are ignored. Skip this update.
+            return null;
+        end if;
+    elsif TG_OP = 'DELETE' and TG_LEVEL = 'ROW' then
+        audit_row.row_data = to_jsonb(OLD.*) - excluded_cols;
+    elsif TG_OP = 'INSERT' and TG_LEVEL = 'ROW' then
+        audit_row.row_data = to_jsonb(NEW.*) - excluded_cols;
+    elsif TG_LEVEL = 'STATEMENT' and TG_OP in ('INSERT','UPDATE','DELETE','TRUNCATE') then
+        audit_row.statement_only := 't';
+    else
+        raise exception '[audit.if_modified_func] - Trigger func added as trigger for unhandled case: %, %',TG_OP, TG_LEVEL;
+        return null;
+    end if;
+    insert into audit.logged_actions(
+        schema_name,
+        table_name,
+        relid,
+        session_user_name,
+        action_tstamp_tx,
+        action_tstamp_stm,
+        action_tstamp_clk,
+        transaction_id,
+        application_name,
+        client_addr,
+        client_port,
+        client_query,
+        action,
+        row_data,
+        changed_fields,
+        statement_only
+    )
+    values (
+        audit_row.schema_name,
+        audit_row.table_name,
+        audit_row.relid,
+        audit_row.session_user_name,
+        audit_row.action_tstamp_tx,
+        audit_row.action_tstamp_stm,
+        audit_row.action_tstamp_clk,
+        audit_row.transaction_id,
+        audit_row.application_name,
+        audit_row.client_addr,
+        audit_row.client_port,
+        audit_row.client_query,
+        audit_row.action,
+        audit_row.row_data,
+        audit_row.changed_fields,
+        audit_row.statement_only
+    );
+    return null;
+end;
+$$;
+
+comment on function audit.if_modified_func() is $$
+Track changes to a table at the statement and/or row level.
+
+Optional parameters to trigger in CREATE TRIGGER call:
+
+param 0: boolean, whether to log the query text. Default 't'.
+
+param 1: text[], columns to ignore in updates. Default [].
+
+         Updates to ignored cols are omitted from changed_fields.
+
+         Updates with only ignored cols changed are not inserted
+         into the audit log.
+
+         Almost all the processing work is still done for updates
+         that ignored. If you need to save the load, you need to use
+         WHEN clause on the trigger instead.
+
+         No warning or error is issued if ignored_cols contains columns
+         that do not exist in the target table. This lets you specify
+         a standard set of ignored columns.
+
+There is no parameter to disable logging of values. Add this trigger as
+a 'FOR EACH STATEMENT' rather than 'FOR EACH ROW' trigger if you do not
+want to log row values.
+
+Note that the user name logged is the login role for the session. The audit trigger
+cannot obtain the active role because it is reset by the SECURITY DEFINER invocation
+of the audit trigger its self.
+$$;
+
+create or replace procedure audit.audit_table(
+    target_table regclass,
+    audit_rows boolean default true,
+    audit_query_text boolean default true,
+    ignored_cols text[] default '{}'::text[]
+)
+language plpgsql
+as $$
+declare
+    stm_targets text := 'INSERT OR UPDATE OR DELETE OR TRUNCATE';
+    _q_txt text;
+    _ignored_cols_snip text := ', ' || quote_literal(coalesce($4,'{}'::text[]));
+	_schema text;
+	_name text;
+begin
+    if $2 is null or $3 is null then
+        raise exception '2nd and 3rd parameters must be non-null';
+    end if;
+	
+	select n.nspname::text, c.relname::text
+	into   _schema, _name
+	from   pg_class c
+	join   pg_namespace n on c.relnamespace = n.oid
+	where  c.oid = target_table::oid;
+
+    execute format('DROP TRIGGER IF EXISTS audit_trigger_row ON %I.%I', _schema, _name);
+    execute format('DROP TRIGGER IF EXISTS audit_trigger_stm ON %I.%I', _schema, _name);
+
+    if $2 then
+        _q_txt := format(
+            'CREATE TRIGGER audit_trigger_row '
+            'AFTER INSERT OR UPDATE OR DELETE ON %I.%I '
+            'FOR EACH ROW EXECUTE PROCEDURE audit.if_modified_func(' ||
+            quote_literal($3) || _ignored_cols_snip || ');',
+			_schema,
+			_name
+        );
+        raise notice '%',_q_txt;
+        execute _q_txt;
+        stm_targets := 'TRUNCATE';
+    end if;
+
+    _q_txt := format(
+        'CREATE TRIGGER audit_trigger_stm '
+        'AFTER ' || stm_targets || ' ON %I.%I '
+        'FOR EACH STATEMENT EXECUTE PROCEDURE audit.if_modified_func(' || quote_literal($3) || ');',
+		_schema,
+		_name
+    );
+    raise notice '%',_q_txt;
+    execute _q_txt;
+end;
+$$;
+
+comment on procedure audit.audit_table(regclass, boolean, boolean, text[]) IS $$
+Add auditing support to a table.
+
+Arguments:
+   target_table:     Table name, schema qualified if not on search_path
+   audit_rows:       Record each row change, or only audit at a statement level, default is true (i.e. row level)
+   audit_query_text: Record the text of the client query that triggered the audit event? default is true
+   ignored_cols:     Columns to exclude from update diffs, ignore updates that change only ignored cols. default is none
+$$;
+
+create view audit.tableslist as 
+select distinct triggers.trigger_schema as schema, triggers.event_object_table AS auditedtable
+from   information_schema.triggers
+where  triggers.trigger_name::text in ('audit_trigger_row'::text, 'audit_trigger_stm'::text)
+order by 1, 2;
+
+comment on view audit.tableslist is $$
+View showing all tables with auditing set up. Ordered by schema, then table.
+$$;
+
 create schema geoflow;
 
 create function geoflow.check_not_blank_or_empty(
