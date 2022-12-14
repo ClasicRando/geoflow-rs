@@ -40,7 +40,7 @@ pub async fn create_user(
             "Current user does not have privileges to create users".to_string(),
         );
     }
-    match user.0.create_user(pool).await {
+    match user.0.create_user(current_user.uid, pool).await {
         Ok(Some(user)) => MsgPackApiResponse::success(user),
         Ok(None) => MsgPackApiResponse::failure(String::from("Failed to create a new user")),
         Err(error) => MsgPackApiResponse::error(error),
@@ -84,7 +84,7 @@ pub async fn update_user_password(
         old_password,
         new_password,
     } = update_password.0;
-    match User::update_password(user.username, old_password, new_password, pool).await {
+    match User::update_password(user.uid, user.username, old_password, new_password, pool).await {
         Ok(Some(user)) => MsgPackApiResponse::success(user),
         Ok(None) => MsgPackApiResponse::failure(String::from("Failed to update the user password")),
         Err(error) => MsgPackApiResponse::error(error),
@@ -124,7 +124,7 @@ pub async fn add_user_role(
             "Current user does not have privileges to add roles".to_string(),
         );
     }
-    match User::add_role(add_role.uid, add_role.role_id, pool).await {
+    match User::add_role(user.uid, add_role.uid, add_role.role_id, pool).await {
         Ok(Some(user)) => MsgPackApiResponse::success(user),
         Ok(None) => MsgPackApiResponse::failure(format!(
             "Failed to add role_id = {} for uid = {}",
@@ -145,7 +145,7 @@ pub async fn remove_user_role(
             "Current user does not have privileges to add roles".to_string(),
         );
     }
-    match User::remove_role(remove_role.uid, remove_role.role_id, pool).await {
+    match User::remove_role(user.uid, remove_role.uid, remove_role.role_id, pool).await {
         Ok(Some(user)) => MsgPackApiResponse::success(user),
         Ok(None) => MsgPackApiResponse::failure(format!(
             "Failed to remove role_id = {} for uid = {}",

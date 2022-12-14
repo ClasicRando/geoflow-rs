@@ -1,3 +1,4 @@
+use super::utilities::start_transaction;
 use rocket::{
     http::Status,
     outcome::IntoOutcome,
@@ -68,15 +69,21 @@ impl PgHasArrayType for UserRole {
 }
 
 impl User {
-    pub async fn create_user(self, pool: &PgPool) -> Result<Option<Self>, sqlx::Error> {
+    pub async fn create_user(
+        self,
+        geoflow_user_id: i64,
+        pool: &PgPool,
+    ) -> Result<Option<Self>, sqlx::Error> {
+        let mut transaction = start_transaction(&geoflow_user_id, pool).await?;
         let role_ids = self.roles.iter().map(|r| r.role_id).collect::<Vec<_>>();
         let uid_option: Option<i64> = sqlx::query_scalar("select geoflow.create_user($1,$2,$3,$4)")
             .bind(&self.name)
             .bind(&self.username)
             .bind(&self.password)
             .bind(&role_ids)
-            .fetch_optional(pool)
+            .fetch_optional(&mut transaction)
             .await?;
+        transaction.commit().await?;
         let Some(uid) = uid_option else {
             return Ok(None)
         };
@@ -118,17 +125,20 @@ impl User {
     }
 
     pub async fn update_password(
+        geoflow_user_id: i64,
         username: String,
         old_password: String,
         new_password: String,
         pool: &PgPool,
     ) -> Result<Option<Self>, sqlx::Error> {
+        let mut transaction = start_transaction(&geoflow_user_id, pool).await?;
         let uid: i64 = sqlx::query_scalar("select geoflow.update_user_password($1,$2,$3)")
             .bind(&username)
             .bind(&old_password)
             .bind(&new_password)
-            .fetch_one(pool)
+            .fetch_one(&mut transaction)
             .await?;
+        transaction.commit().await?;
         Self::read_one(uid, pool).await
     }
 
@@ -137,6 +147,7 @@ impl User {
         name: String,
         pool: &PgPool,
     ) -> Result<Option<Self>, sqlx::Error> {
+        let mut transaction = start_transaction(&uid, pool).await?;
         sqlx::query(
             r#"
             update geoflow.users
@@ -145,16 +156,19 @@ impl User {
         )
         .bind(uid)
         .bind(&name)
-        .execute(pool)
+        .execute(&mut transaction)
         .await?;
+        transaction.commit().await?;
         Self::read_one(uid, pool).await
     }
 
     pub async fn add_role(
+        geoflow_user_id: i64,
         uid: i64,
         role_id: i32,
         pool: &PgPool,
     ) -> Result<Option<Self>, sqlx::Error> {
+        let mut transaction = start_transaction(&geoflow_user_id, pool).await?;
         sqlx::query(
             r#"
             insert into geoflow.user_roles(uid,role_id)
@@ -162,16 +176,19 @@ impl User {
         )
         .bind(uid)
         .bind(role_id)
-        .execute(pool)
+        .execute(&mut transaction)
         .await?;
+        transaction.commit().await?;
         Self::read_one(uid, pool).await
     }
 
     pub async fn remove_role(
+        geoflow_user_id: i64,
         uid: i64,
         role_id: i32,
         pool: &PgPool,
     ) -> Result<Option<Self>, sqlx::Error> {
+        let mut transaction = start_transaction(&geoflow_user_id, pool).await?;
         sqlx::query(
             r#"
             delete from geoflow.user_roles
@@ -180,8 +197,9 @@ impl User {
         )
         .bind(uid)
         .bind(role_id)
-        .execute(pool)
+        .execute(&mut transaction)
         .await?;
+        transaction.commit().await?;
         Self::read_one(uid, pool).await
     }
 }
