@@ -4,7 +4,7 @@ revoke all on schema audit from public;
 
 comment on schema audit is 'Out-of-table audit/history logging tables and trigger functions';
 
-create type audit.audit_action as enum('I','D','U', 'T');
+create type audit.audit_action as enum('I','D','U','T');
 
 create table audit.logged_actions (
     event_id bigint primary key generated always as identity,
@@ -93,7 +93,7 @@ begin
     if TG_ARGV[1] is not null then
         excluded_cols := TG_ARGV[1]::text[];
     end if;
-    
+
     if TG_OP = 'UPDATE' and TG_LEVEL = 'ROW' then
         audit_row.row_data := to_jsonb(OLD.*) - excluded_cols;
         select jsonb_object_agg(new_row.key, new_row.value)
@@ -201,18 +201,18 @@ declare
     stm_targets text := 'INSERT OR UPDATE OR DELETE OR TRUNCATE';
     _q_txt text;
     _ignored_cols_snip text := ', ' || quote_literal(coalesce($4,'{}'::text[]));
-	_schema text;
-	_name text;
+    _schema text;
+    _name text;
 begin
     if $2 is null or $3 is null then
         raise exception '2nd and 3rd parameters must be non-null';
     end if;
-	
-	select n.nspname::text, c.relname::text
-	into   _schema, _name
-	from   pg_class c
-	join   pg_namespace n on c.relnamespace = n.oid
-	where  c.oid = target_table::oid;
+
+    select n.nspname::text, c.relname::text
+    into   _schema, _name
+    from   pg_class c
+    join   pg_namespace n on c.relnamespace = n.oid
+    where  c.oid = target_table::oid;
 
     execute format('DROP TRIGGER IF EXISTS audit_trigger_row ON %I.%I', _schema, _name);
     execute format('DROP TRIGGER IF EXISTS audit_trigger_stm ON %I.%I', _schema, _name);
@@ -223,8 +223,8 @@ begin
             'AFTER INSERT OR UPDATE OR DELETE ON %I.%I '
             'FOR EACH ROW EXECUTE PROCEDURE audit.if_modified_func(' ||
             quote_literal($3) || _ignored_cols_snip || ');',
-			_schema,
-			_name
+            _schema,
+            _name
         );
         raise notice '%',_q_txt;
         execute _q_txt;
@@ -235,8 +235,8 @@ begin
         'CREATE TRIGGER audit_trigger_stm '
         'AFTER ' || stm_targets || ' ON %I.%I '
         'FOR EACH STATEMENT EXECUTE PROCEDURE audit.if_modified_func(' || quote_literal($3) || ');',
-		_schema,
-		_name
+        _schema,
+        _name
     );
     raise notice '%',_q_txt;
     execute _q_txt;
@@ -253,7 +253,7 @@ Arguments:
    ignored_cols:     Columns to exclude from update diffs, ignore updates that change only ignored cols. default is none
 $$;
 
-create view audit.tableslist as 
+create view audit.tableslist as
 select distinct triggers.trigger_schema as schema, triggers.event_object_table AS auditedtable
 from   information_schema.triggers
 where  triggers.trigger_name::text in ('audit_trigger_row'::text, 'audit_trigger_stm'::text)
@@ -266,28 +266,28 @@ $$;
 create schema geoflow;
 
 create function geoflow.check_not_blank_or_empty(
-	text
+    text
 ) returns boolean
 language plpgsql
 immutable
 as $$
 begin
-	return coalesce($1,'x') !~ '^\s*$';
+    return coalesce($1,'x') !~ '^\s*$';
 end;
 $$;
 
 create function geoflow.check_array_not_blank_or_empty(
-	text[]
+    text[]
 ) returns boolean
 immutable
 language plpgsql
 as $$
 declare
-	val text;
+    val text;
 begin
-	if $1 = '{}' then
-		return false;
-	end if;
+    if $1 = '{}' then
+        return false;
+    end if;
     if $1 is not null then
         foreach val in array $1
         loop
@@ -296,12 +296,12 @@ begin
             end if;
         end loop;
     end if;
-	return true;
+    return true;
 end;
 $$;
 
 create function geoflow.check_timestamp_later(
-	to_check timestamp,
+    to_check timestamp,
     other timestamp
 ) returns boolean
 immutable
@@ -317,9 +317,9 @@ end;
 $$;
 
 create table geoflow.roles (
-	role_id integer primary key generated always as identity,
-	name text not null check(geoflow.check_not_blank_or_empty(name)) unique,
-	description text not null check(geoflow.check_not_blank_or_empty(description))
+    role_id integer primary key generated always as identity,
+    name text not null check(geoflow.check_not_blank_or_empty(name)) unique,
+    description text not null check(geoflow.check_not_blank_or_empty(description))
 );
 
 insert into geoflow.roles(name,description)
@@ -331,19 +331,19 @@ values('admin','All privileges granted'),
 ('create_ds','create a new data source');
 
 create table geoflow.users (
-	uid bigint primary key generated always as identity,
-	name text not null check(geoflow.check_not_blank_or_empty(name)),
-	username text not null check(geoflow.check_not_blank_or_empty(username)) unique,
+    uid bigint primary key generated always as identity,
+    name text not null check(geoflow.check_not_blank_or_empty(name)),
+    username text not null check(geoflow.check_not_blank_or_empty(username)) unique,
     password text not null
 );
 
 call audit.audit_table('geoflow.users');
 
 create table geoflow.user_roles (
-	uid bigint not null references geoflow.users (uid) match simple
+    uid bigint not null references geoflow.users (uid) match simple
         on update cascade
         on delete cascade,
-	role_id bigint not null references geoflow.roles (role_id) match simple
+    role_id bigint not null references geoflow.roles (role_id) match simple
         on update cascade
         on delete restrict
 );
@@ -351,29 +351,29 @@ create table geoflow.user_roles (
 call audit.audit_table('geoflow.user_roles');
 
 create view geoflow.v_users as
-	with user_roles as (
-		select ur.uid, array_agg(r) roles
-		from   geoflow.user_roles ur
-		join   geoflow.roles r on ur.role_id = r.role_id
-		group by ur.uid
-	)
-	select u.uid, u.name, u.username, ur.roles
-	from   geoflow.users u
-	join   user_roles ur on u.uid = ur.uid;
+    with user_roles as (
+        select ur.uid, array_agg(r) roles
+        from   geoflow.user_roles ur
+        join   geoflow.roles r on ur.role_id = r.role_id
+        group by ur.uid
+    )
+    select u.uid, u.name, u.username, ur.roles
+    from   geoflow.users u
+    join   user_roles ur on u.uid = ur.uid;
 
 create procedure geoflow.validate_password(password text)
 language plpgsql
 as $$
 begin
-	if $1 !~ '[A-Z]' then
+    if $1 !~ '[A-Z]' then
         raise exception 'password does meet the requirements. Must contain at least 1 uppercase character.';
-	end if;
-	if $1 !~ '\d' then
+    end if;
+    if $1 !~ '\d' then
         raise exception 'password does meet the requirements. Must contain at least 1 digit character.';
-	end if;
-	if $1 !~ '\W' then
+    end if;
+    if $1 !~ '\W' then
         raise exception 'password does meet the requirements. Must contain at least 1 non-alphanumberic character.';
-	end if;
+    end if;
 end;
 $$;
 
@@ -388,19 +388,19 @@ language plpgsql
 returns null on null input
 as $$
 declare
-	v_uid bigint;
+    v_uid bigint;
 begin
     call geoflow.validate_password($3);
-	
+
     insert into geoflow.users(name,username,password)
     values($1,$2,crypt($3, gen_salt('bf')))
     returning uid into v_uid;
-	
-	insert into geoflow.user_roles(uid,role_id)
-    select v_uid, r
-	from   unnest($4) r;
 
-	return v_uid;
+    insert into geoflow.user_roles(uid,role_id)
+    select v_uid, r
+    from   unnest($4) r;
+
+    return v_uid;
 end;
 $$;
 
@@ -425,7 +425,7 @@ begin
         when no_data_found then
             return null;
     end;
-    
+
     return result;
 end;
 $$;
@@ -439,20 +439,20 @@ volatile
 language plpgsql
 as $$
 declare
-	v_uid bigint;
+    v_uid bigint;
 begin
     if geoflow.validate_user($1, $2) is not null then
         raise exception 'Could not validate the old password for the username of "%s"', $1;
     end if;
 
     call geoflow.validate_password($3);
-	
+
     update geoflow.users
     set    password = crypt($3, gen_salt('bf'))
     where  username = $1
-	returning uid into v_uid;
-	
-	return v_uid;
+    returning uid into v_uid;
+
+    return v_uid;
 end;
 $$;
 
@@ -562,9 +562,9 @@ as $$
 $$;
 
 create table geoflow.regions (
-	region_id bigint primary key generated always as identity,
+    region_id bigint primary key generated always as identity,
     country_code text not null check(geoflow.check_not_blank_or_empty(country_code)),
-	country_name text not null check(geoflow.check_not_blank_or_empty(country_name)),
+    country_name text not null check(geoflow.check_not_blank_or_empty(country_name)),
     prov_code text check(geoflow.check_not_blank_or_empty(prov_code)),
     prov_name text check(geoflow.check_not_blank_or_empty(prov_name)),
     county text check(geoflow.check_not_blank_or_empty(county))
@@ -643,9 +643,9 @@ values('US','AL','Alabama','United States'),
 ('CA','YT','Yukon','Canada');
 
 create table geoflow.warehouse_types (
-	wt_id integer primary key generated always as identity,
-	name text not null check(geoflow.check_not_blank_or_empty(name)),
-	description text not null check(geoflow.check_not_blank_or_empty(description))
+    wt_id integer primary key generated always as identity,
+    name text not null check(geoflow.check_not_blank_or_empty(name)),
+    description text not null check(geoflow.check_not_blank_or_empty(description))
 );
 
 call audit.audit_table('geoflow.warehouse_types');
@@ -675,9 +675,9 @@ end;
 $$;
 
 create table geoflow.data_sources (
-	ds_id bigint primary key generated always as identity,
-	name text not null check(geoflow.check_not_blank_or_empty(name)),
-	description text not null check(geoflow.check_not_blank_or_empty(description)),
+    ds_id bigint primary key generated always as identity,
+    name text not null check(geoflow.check_not_blank_or_empty(name)),
+    description text not null check(geoflow.check_not_blank_or_empty(description)),
     search_radius real not null check(search_radius > 0),
     comments text,
     region_id bigint not null references geoflow.regions (region_id) match simple
@@ -752,14 +752,14 @@ $$;
 
 create table geoflow.data_source_contacts (
     contact_id bigint primary key generated always as identity,
-	ds_id bigint not null references geoflow.data_sources (ds_id) match simple
+    ds_id bigint not null references geoflow.data_sources (ds_id) match simple
         on update cascade
         on delete restrict,
-	name text not null check(geoflow.check_not_blank_or_empty(name)),
-	email text check(geoflow.check_not_blank_or_empty(email)),
-	website text check(geoflow.check_not_blank_or_empty(website)),
-	type text check(geoflow.check_not_blank_or_empty(type)),
-	notes text check(geoflow.check_not_blank_or_empty(notes)),
+    name text not null check(geoflow.check_not_blank_or_empty(name)),
+    email text check(geoflow.check_not_blank_or_empty(email)),
+    website text check(geoflow.check_not_blank_or_empty(website)),
+    type text check(geoflow.check_not_blank_or_empty(type)),
+    notes text check(geoflow.check_not_blank_or_empty(notes)),
     created timestamp not null default timezone('utc'::text, now()),
     created_by bigint not null references geoflow.users (uid) match simple
         on update cascade
@@ -782,11 +782,11 @@ create type geoflow.load_state as enum ('Active', 'Ready', 'Hold');
 create type geoflow.merge_type as enum ('None', 'Exclusive', 'Intersect');
 
 create table geoflow.load_instances (
-	li_id bigint primary key generated always as identity,
-	ds_id bigint not null references geoflow.data_sources (ds_id) match simple
+    li_id bigint primary key generated always as identity,
+    ds_id bigint not null references geoflow.data_sources (ds_id) match simple
         on update cascade
         on delete restrict,
-	version_date date not null,
+    version_date date not null,
     collect_user_id bigint references geoflow.users (uid) match simple
         on update cascade
         on delete set null,
@@ -802,19 +802,19 @@ create table geoflow.load_instances (
     match_count integer not null default 0 check(match_count >= 0),
     new_count integer not null default 0 check(new_count >= 0),
     plotting_stats jsonb not null default '{}'::jsonb,
-	collect_start timestamp check(geoflow.check_timestamp_later(collect_finish, collect_start)),
-	collect_finish timestamp check(geoflow.check_timestamp_later(collect_finish, collect_start)),
-	collect_workflow_id bigint not null,
-	collect_workflow_run_id bigint,
-	load_start timestamp check(geoflow.check_timestamp_later(load_finish, load_start)),
-	load_finish timestamp check(geoflow.check_timestamp_later(load_finish, load_start)),
-	load_workflow_id bigint not null,
-	load_workflow_run_id bigint,
-	check_start timestamp check(geoflow.check_timestamp_later(check_finish, check_start)),
-	check_finish timestamp check(geoflow.check_timestamp_later(check_finish, check_start)),
-	check_workflow_id bigint not null,
-	check_workflow_run_id bigint,
-	done timestamp,
+    collect_start timestamp check(geoflow.check_timestamp_later(collect_finish, collect_start)),
+    collect_finish timestamp check(geoflow.check_timestamp_later(collect_finish, collect_start)),
+    collect_workflow_id bigint not null,
+    collect_workflow_run_id bigint,
+    load_start timestamp check(geoflow.check_timestamp_later(load_finish, load_start)),
+    load_finish timestamp check(geoflow.check_timestamp_later(load_finish, load_start)),
+    load_workflow_id bigint not null,
+    load_workflow_run_id bigint,
+    check_start timestamp check(geoflow.check_timestamp_later(check_finish, check_start)),
+    check_finish timestamp check(geoflow.check_timestamp_later(check_finish, check_start)),
+    check_workflow_id bigint not null,
+    check_workflow_run_id bigint,
+    done timestamp,
     merge_type geoflow.merge_type not null,
     created timestamp not null default timezone('utc'::text, now()),
     created_by bigint not null references geoflow.users (uid) match simple
@@ -835,7 +835,7 @@ create function geoflow.user_can_update_ls(
 stable
 language sql
 as $$
-	select (exists(
+    select (exists(
         select 1
         from   geoflow.load_instances
         where  ls_id = $2
@@ -881,11 +881,11 @@ returns null on null input
 as $$
 insert into geoflow.load_instances(ds_id,version_date,collect_workflow_id,load_workflow_id,check_workflow_id,merge_type)
 with last_merge_type as (
-	select ds_id, merge_type
-	from   geoflow.load_instances
-	where  ds_id = $1
-	order by li_id desc
-	limit 1
+    select ds_id, merge_type
+    from   geoflow.load_instances
+    where  ds_id = $1
+    order by li_id desc
+    limit 1
 )
 select ds.ds_id, $2, ds.collection_workflow, ds.load_workflow, ds.check_workflow, coalesce(lmt.merge_type,'None'::geoflow.merge_type)
 from   geoflow.data_sources ds
@@ -895,9 +895,9 @@ returning li_id;
 $$;
 
 create table geoflow.plotting_method_types (
-	pmt_id integer primary key generated always as identity,
-	name text not null check(geoflow.check_not_blank_or_empty(name)) unique,
-	description text not null check(geoflow.check_not_blank_or_empty(description))
+    pmt_id integer primary key generated always as identity,
+    name text not null check(geoflow.check_not_blank_or_empty(name)) unique,
+    description text not null check(geoflow.check_not_blank_or_empty(description))
 );
 
 create type geoflow.column_type as enum (
@@ -907,22 +907,22 @@ create type geoflow.column_type as enum (
 
 create type geoflow.column_metadata as
 (
-	name text,
-	column_type geoflow.column_type
+    name text,
+    column_type geoflow.column_type
 );
 
 create function geoflow.valid_column_metadata(
-	geoflow.column_metadata[]
+    geoflow.column_metadata[]
 ) returns boolean
 language plpgsql
 immutable
 as $$
 declare
-	meta geoflow.column_metadata;
+    meta geoflow.column_metadata;
 begin
-	if $1 = '{}' then
-		return false;
-	end if;
+    if $1 = '{}' then
+        return false;
+    end if;
     foreach meta in array $1
     loop
         if meta.name is null or not geoflow.check_not_blank_or_empty(meta.name) or meta.column_type is null then
@@ -934,17 +934,17 @@ end;
 $$;
 
 create table geoflow.source_data (
-	sd_id bigint primary key generated always as identity,
-	li_id bigint not null references geoflow.load_instances (li_id) match simple
+    sd_id bigint primary key generated always as identity,
+    li_id bigint not null references geoflow.load_instances (li_id) match simple
         on update cascade
         on delete restrict,
     load_source_id smallint not null check (load_source_id > 0),
     user_generated boolean not null default false,
-	options jsonb not null,
-	table_name text not null check(table_name ~ '^[A-Z_][A-Z_0-9]{1,64}$'),
+    options jsonb not null,
+    table_name text not null check(table_name ~ '^[A-Z_][A-Z_0-9]{1,64}$'),
     columns geoflow.column_metadata[] not null check(geoflow.valid_column_metadata(columns)),
-	constraint source_data_load_instance_table_name unique (li_id, table_name),
-	constraint source_data_load_source_id unique (li_id, load_source_id)
+    constraint source_data_load_instance_table_name unique (li_id, table_name),
+    constraint source_data_load_source_id unique (li_id, load_source_id)
 );
 create index source_data_li_id on geoflow.source_data(li_id);
 
@@ -969,36 +969,36 @@ where  li_id = $1
 $$;
 
 create function geoflow.create_source_data_entry(
-	geoflow_user_id bigint,
-	li_id bigint,
-	user_generated boolean,
-	options jsonb,
-	table_name text,
-	columns geoflow.column_metadata[],
-	out sd_id bigint,
-	out load_source_id smallint
+    geoflow_user_id bigint,
+    li_id bigint,
+    user_generated boolean,
+    options jsonb,
+    table_name text,
+    columns geoflow.column_metadata[],
+    out sd_id bigint,
+    out load_source_id smallint
 )
 volatile
 language plpgsql
 as $$
 begin
-	if not geoflow.user_can_update_ls($1, $2) then
+    if not geoflow.user_can_update_ls($1, $2) then
         raise exception 'uid %s cannot create a new source data entry. User must be part of the load instance.', $1;
-	end if;
-	insert into geoflow.source_data(li_id,user_generated,options,table_name,columns)
-	values($2,$3,$4,$5,$6)
-	returning sd_id, load_source_id into $7, $8;
+    end if;
+    insert into geoflow.source_data(li_id,user_generated,options,table_name,columns)
+    values($2,$3,$4,$5,$6)
+    returning sd_id, load_source_id into $7, $8;
 end;
 $$;
 
 create function geoflow.update_source_data_entry(
-	geoflow_user_id bigint,
+    geoflow_user_id bigint,
     sd_id bigint,
-	li_id bigint,
-	user_generated boolean,
-	options jsonb,
-	table_name text,
-	columns geoflow.column_metadata[]
+    li_id bigint,
+    user_generated boolean,
+    options jsonb,
+    table_name text,
+    columns geoflow.column_metadata[]
 ) returns geoflow.source_data
 volatile
 language plpgsql
@@ -1009,7 +1009,7 @@ declare
 begin
     if not geoflow.user_can_update_ls($1, $3) then
         raise exception 'uid %s cannot create a new source data entry. User must be part of the load instance.', $1;
-	end if;
+    end if;
     update geoflow.source_data
     set    load_source_id = $3,
            user_generated = $4,
@@ -1023,7 +1023,7 @@ end;
 $$;
 
 create function geoflow.delete_source_data_entry(
-	geoflow_user_id bigint,
+    geoflow_user_id bigint,
     sd_id bigint
 ) returns geoflow.source_data
 volatile
@@ -1033,12 +1033,12 @@ as $$
 declare
     result geoflow.source_data;
 begin
-	if not geoflow.user_can_update_ls($1, $2) then
+    if not geoflow.user_can_update_ls($1, $2) then
         raise exception 'uid %s cannot create a new source data entry. User must be part of the load instance.', $1;
-	end if;
-	delete from geoflow.source_data
-	where  sd_id = $2
-	returning sd_id, li_id, load_source_id, user_generated, options, table_name, columns into result;
+    end if;
+    delete from geoflow.source_data
+    where  sd_id = $2
+    returning sd_id, li_id, load_source_id, user_generated, options, table_name, columns into result;
     return result;
 end;
 $$;
@@ -1054,11 +1054,11 @@ begin
     select count(distinct sd_id)
     into   check_count
     from   new_table;
-    
+
     if check_count > 1 then
         raise exception 'Cannot insert for multiple sd_id';
     end if;
-    
+
     select count(0)
     into   check_count
     from (
@@ -1066,7 +1066,7 @@ begin
         from   new_table
     ) t1
     where  rn != plotting_order;
-    
+
     if check_count > 0 then
         raise exception 'The order of the plotting methods has skipped a value';
     end if;
@@ -1075,10 +1075,10 @@ end;
 $$;
 
 create table geoflow.plotting_methods (
-	sd_id bigint not null references geoflow.source_data (sd_id) match simple
+    sd_id bigint not null references geoflow.source_data (sd_id) match simple
         on update cascade
         on delete restrict,
-	plotting_order smallint not null check(plotting_order > 0),
+    plotting_order smallint not null check(plotting_order > 0),
     method_type integer not null references geoflow.plotting_method_types (pmt_id) match simple
         on update cascade
         on delete restrict,
