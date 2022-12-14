@@ -390,14 +390,14 @@ as $$
 declare
 	v_uid bigint;
 begin
-    perform geoflow.validate_password($3);
+    call geoflow.validate_password($3);
 	
     insert into geoflow.users(name,username,password)
     values($1,$2,crypt($3, gen_salt('bf')))
     returning uid into v_uid;
 	
 	insert into geoflow.user_roles(uid,role_id)
-	select nu.uid, v_uid
+    select v_uid, r
 	from   unnest($4) r;
 
 	return v_uid;
@@ -445,7 +445,7 @@ begin
         raise exception 'Could not validate the old password for the username of "%s"', $1;
     end if;
 
-    perform geoflow.validate_password($3);
+    call geoflow.validate_password($3);
 	
     update geoflow.users
     set    password = crypt($3, gen_salt('bf'))
@@ -914,7 +914,7 @@ create type geoflow.column_metadata as
 create function geoflow.valid_column_metadata(
 	geoflow.column_metadata[]
 ) returns boolean
-language 'plpgsql'
+language plpgsql
 immutable
 as $$
 declare
@@ -1007,7 +1007,7 @@ as $$
 declare
     result geoflow.source_data;
 begin
-	if not geoflow.user_can_update_ls($1, $2) then
+    if not geoflow.user_can_update_ls($1, $3) then
         raise exception 'uid %s cannot create a new source data entry. User must be part of the load instance.', $1;
 	end if;
     update geoflow.source_data
