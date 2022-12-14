@@ -23,7 +23,8 @@ create table audit.logged_actions (
     action audit.audit_action not null,
     row_data jsonb,
     changed_fields jsonb,
-    statement_only boolean not null
+    statement_only boolean not null,
+    geoflow_user_id bigint,
 );
 
 revoke all on audit.logged_actions from public;
@@ -71,7 +72,7 @@ begin
         TG_TABLE_NAME::text,                          -- table_name
         TG_RELID,                                     -- relation OID for much quicker searches
         session_user::text,                           -- session_user_name
-        current_timestamp,                            -- action_tstamp_tx
+        current_timestamp,							  -- action_tstamp_tx
         statement_timestamp(),                        -- action_tstamp_stm
         clock_timestamp(),                            -- action_tstamp_clk
         txid_current(),                               -- transaction ID
@@ -81,7 +82,8 @@ begin
         current_query(),                              -- top-level query or queries (if multistatement) from client
         substring(TG_OP,1,1)::audit.audit_action,     -- action
         null, null,                                   -- row_data, changed_fields
-        'f'                                           -- statement_only
+        'f',                                          -- statement_only
+        nullif(current_setting('geoflow.uid', true),'') -- geoflow_user_id
     );
 
     if not TG_ARGV[0]::boolean is distinct from 'f'::boolean then
@@ -130,7 +132,8 @@ begin
         action,
         row_data,
         changed_fields,
-        statement_only
+        statement_only,
+        geoflow_user_id
     )
     values (
         audit_row.schema_name,
@@ -148,7 +151,8 @@ begin
         audit_row.action,
         audit_row.row_data,
         audit_row.changed_fields,
-        audit_row.statement_only
+        audit_row.statement_only,
+        audit_row.geoflow_user_id
     );
     return null;
 end;
