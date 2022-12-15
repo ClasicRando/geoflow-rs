@@ -4,6 +4,8 @@ use sqlx::PgPool;
 
 use crate::bulk_loading::analyze::ColumnMetadata;
 
+use super::utilities::start_transaction;
+
 #[derive(sqlx::FromRow, Serialize, Deserialize)]
 pub struct SourceData {
     #[serde(default)]
@@ -19,6 +21,7 @@ pub struct SourceData {
 
 impl SourceData {
     pub async fn create(mut data: Self, uid: i64, pool: &PgPool) -> Result<Self, sqlx::Error> {
+        let mut transaction = start_transaction(&uid, pool).await?;
         let (sd_id, load_source_id): (i64, i16) =
             sqlx::query_as("select geoflow.create_source_data_entry($1,$2,$3,$4,$5,$6)")
                 .bind(uid)
@@ -27,8 +30,9 @@ impl SourceData {
                 .bind(&data.options)
                 .bind(&data.table_name)
                 .bind(&data.columns)
-                .fetch_one(pool)
+                .fetch_one(&mut transaction)
                 .await?;
+        transaction.commit().await?;
         data.sd_id = sd_id;
         data.load_source_id = load_source_id;
         Ok(data)
@@ -52,6 +56,7 @@ impl SourceData {
     }
 
     pub async fn update(self, uid: i64, pool: &PgPool) -> Result<Self, sqlx::Error> {
+        let mut transaction = start_transaction(&uid, pool).await?;
         let new_state: SourceData =
             sqlx::query_as("select geoflow.update_source_data_entry($1,$2,$3,$4,$5,$6,$7)")
                 .bind(uid)
@@ -61,17 +66,20 @@ impl SourceData {
                 .bind(&self.options)
                 .bind(&self.table_name)
                 .bind(&self.columns)
-                .fetch_one(pool)
+                .fetch_one(&mut transaction)
                 .await?;
+        transaction.commit().await?;
         Ok(new_state)
     }
 
     pub async fn delete(sd_id: i64, uid: i64, pool: &PgPool) -> Result<Option<Self>, sqlx::Error> {
+        let mut transaction = start_transaction(&uid, pool).await?;
         let record = sqlx::query_as("selct geoflow.delete_source_data_entry($1,$2)")
             .bind(uid)
             .bind(sd_id)
-            .fetch_optional(pool)
+            .fetch_optional(&mut transaction)
             .await?;
+        transaction.commit().await?;
         Ok(record)
     }
 }

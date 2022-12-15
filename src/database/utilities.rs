@@ -2,6 +2,7 @@ use async_once_cell::OnceCell;
 use sqlx::{
     error::Error,
     postgres::{PgConnectOptions, PgPool, PgPoolOptions},
+    Postgres, Transaction,
 };
 use std::env;
 
@@ -31,4 +32,16 @@ pub async fn create_db_pool() -> Result<PgPool, Error> {
 
 pub async fn db_pool() -> Result<&'static PgPool, Error> {
     GF_POSTGRES_DB.get_or_try_init(create_db_pool()).await
+}
+
+pub async fn start_transaction<'p>(
+    geoflow_user_id: &i64,
+    pool: &'p PgPool,
+) -> Result<Transaction<'p, Postgres>, sqlx::Error> {
+    let mut transaction = pool.begin().await?;
+    sqlx::query("SET LOCAL geoflow.uid = $1")
+        .bind(geoflow_user_id)
+        .execute(&mut transaction)
+        .await?;
+    Ok(transaction)
 }
