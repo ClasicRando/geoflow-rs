@@ -1,22 +1,26 @@
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::PgPool;
 
-use crate::bulk_loading::analyze::ColumnMetadata;
+use crate::bulk_loading::ColumnMetadata;
 
 use super::utilities::start_transaction;
 
 #[derive(sqlx::FromRow, Serialize, Deserialize)]
 pub struct SourceData {
     #[serde(default)]
-    sd_id: i64,
+    pub sd_id: i64,
     li_id: i64,
     #[serde(default)]
-    load_source_id: i16,
+    pub load_source_id: i16,
     user_generated: bool,
     options: Value,
     table_name: String,
     columns: Vec<ColumnMetadata>,
+    to_load: bool,
+    loaded_timestamp: Option<chrono::DateTime<Utc>>,
+    error_message: Option<String>,
 }
 
 impl SourceData {
@@ -39,7 +43,7 @@ impl SourceData {
     }
 
     pub async fn read_single(sd_id: i64, pool: &PgPool) -> Result<Option<Self>, sqlx::Error> {
-        let record: Option<SourceData> = sqlx::query_as("select geoflow.get_source_data($1)")
+        let record: Option<SourceData> = sqlx::query_as("select geoflow.get_source_data_entry($1)")
             .bind(sd_id)
             .fetch_optional(pool)
             .await?;
@@ -47,9 +51,20 @@ impl SourceData {
     }
 
     pub async fn read_many(li_id: i64, pool: &PgPool) -> Result<Vec<Self>, sqlx::Error> {
+        let records: Vec<SourceData> = sqlx::query_as("select * from geoflow.get_source_data($1)")
+            .bind(li_id)
+            .fetch_all(pool)
+            .await?;
+        Ok(records)
+    }
+
+    pub async fn read_many_to_load(
+        workflow_run_id: &i64,
+        pool: &PgPool,
+    ) -> Result<Vec<Self>, sqlx::Error> {
         let records: Vec<SourceData> =
-            sqlx::query_as("select * from geoflow.get_source_data_entry($1)")
-                .bind(li_id)
+            sqlx::query_as("select * from geoflow.get_source_data_to_load($1)")
+                .bind(workflow_run_id)
                 .fetch_all(pool)
                 .await?;
         Ok(records)
