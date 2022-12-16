@@ -1146,3 +1146,8 @@ create table geoflow.plotting_fields (
 );
 
 call audit.audit_table('geoflow.plotting_fields');
+
+create schema bulk_loading;
+revoke all on schema bulk_loading from public;
+
+comment on schema bulk_loading is 'Destination of all bulk loaded source data.';
