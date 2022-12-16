@@ -15,7 +15,7 @@ pub struct SourceData {
     #[serde(default)]
     pub load_source_id: i16,
     user_generated: bool,
-    options: Value,
+    pub options: Value,
     table_name: String,
     columns: Vec<ColumnMetadata>,
     to_load: bool,
