@@ -10,16 +10,21 @@ pub async fn create_source_data(
     pool: &State<PgPool>,
     user: User,
 ) -> MsgPackApiResponse<SourceData> {
-    SourceData::create(source_data.0, user.uid, pool).await.into()
+    SourceData::create(source_data.0, user.uid, pool)
+        .await
+        .into()
 }
 
 #[get("/api/v1/bulk-loading/source-data/<sd_id>")]
-pub async fn read_single_source_data(sd_id: i64, pool: &State<PgPool>) -> MsgPackApiResponse<SourceData> {
+pub async fn read_single_source_data(
+    sd_id: i64,
+    pool: &State<PgPool>,
+) -> MsgPackApiResponse<SourceData> {
     match SourceData::read_single(sd_id, pool).await {
         Ok(Some(record)) => MsgPackApiResponse::success(record),
-        Ok(None) => MsgPackApiResponse::failure(
-            format!("Could not find a record for sd_id = {}", sd_id),
-        ),
+        Ok(None) => {
+            MsgPackApiResponse::failure(format!("Could not find a record for sd_id = {}", sd_id))
+        }
         Err(error) => MsgPackApiResponse::error(error),
     }
 }
@@ -49,9 +54,9 @@ pub async fn delete_source_data(
 ) -> MsgPackApiResponse<SourceData> {
     match SourceData::delete(sd_id, user.uid, pool).await {
         Ok(Some(record)) => MsgPackApiResponse::success(record),
-        Ok(None) => MsgPackApiResponse::failure(
-            format!("Could not find a record for sd_id = {}", sd_id),
-        ),
+        Ok(None) => {
+            MsgPackApiResponse::failure(format!("Could not find a record for sd_id = {}", sd_id))
+        }
         Err(error) => MsgPackApiResponse::error(error),
     }
 }
