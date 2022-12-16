@@ -51,11 +51,11 @@ pub enum RestServiceFieldType {
     #[serde(alias = "esriFieldTypeGlobalID")]
     GlobalID,
     #[serde(alias = "esriFieldTypeGUID")]
-    GUID,
+    Guid,
     #[serde(alias = "esriFieldTypeInteger")]
     Integer,
     #[serde(alias = "esriFieldTypeOID")]
-    OID,
+    Oid,
     #[serde(alias = "esriFieldTypeRaster")]
     Raster,
     #[serde(alias = "esriFieldTypeSingle")]
@@ -65,7 +65,7 @@ pub enum RestServiceFieldType {
     #[serde(alias = "esriFieldTypeString")]
     String,
     #[serde(alias = "esriFieldTypeXML")]
-    XML,
+    Xml,
 }
 
 impl TryFrom<&RestServiceFieldType> for ColumnType {
@@ -80,16 +80,16 @@ impl TryFrom<&RestServiceFieldType> for ColumnType {
                 return Err("Geometry type fields are not supported".into())
             }
             RestServiceFieldType::GlobalID => ColumnType::UUID,
-            RestServiceFieldType::GUID => ColumnType::UUID,
+            RestServiceFieldType::Guid => ColumnType::UUID,
             RestServiceFieldType::Integer => ColumnType::Integer,
-            RestServiceFieldType::OID => ColumnType::Integer,
+            RestServiceFieldType::Oid => ColumnType::Integer,
             RestServiceFieldType::Raster => {
                 return Err("Raster type fields are not supported".into())
             }
             RestServiceFieldType::Single => ColumnType::Real,
             RestServiceFieldType::SmallInteger => ColumnType::SmallInt,
             RestServiceFieldType::String => ColumnType::Text,
-            RestServiceFieldType::XML => ColumnType::Text,
+            RestServiceFieldType::Xml => ColumnType::Text,
         })
     }
 }
@@ -202,7 +202,7 @@ impl ArcGisRestJsonMetadata {
 }
 
 pub enum QueryIterator<'m> {
-    OID {
+    Oid {
         query_url: Url,
         oid_field_name: &'m str,
         min_oid: i32,
@@ -251,7 +251,7 @@ impl<'m> QueryIterator<'m> {
             let Some((_, min_oid)) = metadata.max_min_oid else {
                 return Err("Min OID is not found but the value is required for scraping".into())
             };
-            Ok(Self::OID {
+            Ok(Self::Oid {
                 query_url,
                 oid_field_name,
                 min_oid,
@@ -267,7 +267,7 @@ impl<'m> QueryIterator<'m> {
     #[inline]
     fn query_url(&self) -> &Url {
         match self {
-            Self::OID { query_url, .. } => query_url,
+            Self::Oid { query_url, .. } => query_url,
             Self::Pagination { query_url, .. } => query_url,
         }
     }
@@ -275,7 +275,7 @@ impl<'m> QueryIterator<'m> {
     #[inline]
     fn remaining_records_count(&self) -> &i32 {
         match self {
-            Self::OID {
+            Self::Oid {
                 remaining_records_count,
                 ..
             } => remaining_records_count,
@@ -289,7 +289,7 @@ impl<'m> QueryIterator<'m> {
     #[inline]
     fn zero_remaining_records_count(&mut self) {
         match self {
-            Self::OID {
+            Self::Oid {
                 remaining_records_count,
                 ..
             } => *remaining_records_count = 0,
@@ -303,7 +303,7 @@ impl<'m> QueryIterator<'m> {
     #[inline]
     fn update_remaining_records_count(&mut self) {
         match self {
-            Self::OID {
+            Self::Oid {
                 remaining_records_count,
                 ref scrape_count,
                 ..
@@ -319,7 +319,7 @@ impl<'m> QueryIterator<'m> {
     #[inline]
     fn update_query_index(&mut self) {
         match self {
-            Self::OID { query_index, .. } => *query_index += 1,
+            Self::Oid { query_index, .. } => *query_index += 1,
             Self::Pagination { query_index, .. } => *query_index += 1,
         }
     }
@@ -327,7 +327,7 @@ impl<'m> QueryIterator<'m> {
     #[inline]
     fn url_params(&self) -> &[(&str, &str)] {
         match self {
-            Self::OID { url_params, .. } => url_params,
+            Self::Oid { url_params, .. } => url_params,
             Self::Pagination { url_params, .. } => url_params,
         }
     }
@@ -335,7 +335,7 @@ impl<'m> QueryIterator<'m> {
     #[inline]
     fn fields(&self) -> &str {
         match self {
-            Self::OID { fields, .. } => fields,
+            Self::Oid { fields, .. } => fields,
             Self::Pagination { fields, .. } => fields,
         }
     }
@@ -351,7 +351,7 @@ impl<'m> Iterator for QueryIterator<'m> {
         let mut url_params = self.url_params().to_vec();
         url_params.push(("outFields", self.fields()));
         let url_parse = match self {
-            Self::OID {
+            Self::Oid {
                 ref oid_field_name,
                 ref min_oid,
                 ref scrape_count,
@@ -479,7 +479,7 @@ impl<'u> ArcGisRestMetadata<'u> {
             oid_field = json_metadata
                 .fields
                 .iter()
-                .find(|field| field.field_type == RestServiceFieldType::OID)
+                .find(|field| field.field_type == RestServiceFieldType::Oid)
                 .map(|field| field.name.to_owned());
         }
 
