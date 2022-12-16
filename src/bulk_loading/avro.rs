@@ -1,9 +1,7 @@
 use super::{
-    analyze::{ColumnType, Schema, SchemaParser},
+    analyze::{ColumnType, Schema},
     error::BulkDataResult,
-    load::{
-        csv_result_iter_to_string, DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult,
-    },
+    load::{csv_result_iter_to_string, RecordSpoolChannel, RecordSpoolResult},
     options::DataOptions,
 };
 use avro_rs::{
@@ -86,39 +84,85 @@ fn avro_field_to_column_type(field: &RecordField) -> BulkDataResult<ColumnType> 
     }
 }
 
-pub struct AvroSchemaParser(AvroFileOptions);
+pub fn schema(options: &AvroFileOptions) -> BulkDataResult<Schema> {
+    let Some(table_name) = options.file_path.file_name().and_then(|f| f.to_str()) else {
+        return Err(format!("Could not get filename for \"{:?}\"", &options.file_path).into())
+    };
+    let reader = options.reader()?;
+    let AvroSchema::Record { fields, .. } = reader.writer_schema() else {
+        return Err(format!("File schema for \"{:?}\" is not a record. Found {:?}", &options.file_path, reader.writer_schema()).into())
+    };
+    let columns = fields
+        .iter()
+        .map(|f| -> BulkDataResult<_> { Ok((&f.name, avro_field_to_column_type(f)?)) });
+    Schema::from_result_iter(table_name, columns)
+}
 
-#[async_trait::async_trait]
-impl SchemaParser for AvroSchemaParser {
-    type Options = AvroFileOptions;
-    type DataParser = AvroFileParser;
-
-    fn new(options: AvroFileOptions) -> Self
-    where
-        Self: Sized,
-    {
-        Self(options)
-    }
-
-    async fn schema(&self) -> BulkDataResult<Schema> {
-        let Some(table_name) = self.0.file_path.file_name().and_then(|f| f.to_str()) else {
-            return Err(format!("Could not get filename for \"{:?}\"", &self.0.file_path).into())
+pub async fn spool_records(
+    options: &AvroFileOptions,
+    record_channel: &mut RecordSpoolChannel,
+) -> RecordSpoolResult {
+    let reader = match options.reader() {
+        Ok(reader) => reader,
+        Err(error) => return record_channel.send(Err(error)).await.err(),
+    };
+    let AvroSchema::Record { fields, .. } = reader.writer_schema() else {
+        return record_channel.send(
+            Err(
+                format!(
+                    "File schema for \"{:?}\" is not a record. Found {:?}",
+                    &options.file_path,
+                    reader.writer_schema()
+                )
+                .into()
+            )
+        )
+        .await
+        .err()
+    };
+    let nullable_union_columns: HashSet<String> = fields
+        .iter()
+        .filter_map(|f| {
+            if let AvroSchema::Union(schema) = &f.schema {
+                if is_nullable_union_schema(schema) {
+                    return Some(f.name.to_owned());
+                }
+            }
+            None
+        })
+        .collect();
+    for (i, record) in reader.enumerate() {
+        let record = match record {
+            Ok(Value::Record(fields)) => fields,
+            Ok(_) => {
+                return record_channel
+                    .send(Err(format!(
+                        "Value {} from \"{:?}\" was not a record",
+                        i + 1,
+                        &options.file_path
+                    )
+                    .into()))
+                    .await
+                    .err()
+            }
+            Err(error) => return record_channel.send(Err(error.into())).await.err(),
         };
-        let reader = self.0.reader()?;
-        let AvroSchema::Record { fields, .. } = reader.writer_schema() else {
-            return Err(format!("File schema for \"{:?}\" is not a record. Found {:?}", &self.0.file_path, reader.writer_schema()).into())
-        };
-        let columns = fields
-            .iter()
-            .map(|f| -> BulkDataResult<_> { Ok((&f.name, avro_field_to_column_type(f)?)) });
-        Schema::from_result_iter(table_name, columns)
+        let csv_iter = record.into_iter().map(|(key, value)| {
+            if nullable_union_columns.contains(&key) {
+                if let Value::Union(union_box) = value {
+                    return map_avro_value(*union_box);
+                }
+            }
+            map_avro_value(value)
+        });
+        let result = record_channel
+            .send(csv_result_iter_to_string(csv_iter))
+            .await;
+        if let Err(error) = result {
+            return Some(error);
+        }
     }
-
-    fn data_loader(self) -> DataLoader<Self::DataParser> {
-        let options = self.0;
-        let parser = AvroFileParser::new(options);
-        DataLoader::new(parser)
-    }
+    None
 }
 
 #[inline]
@@ -233,88 +277,6 @@ fn map_avro_value(value: Value) -> BulkDataResult<String> {
         Value::Duration(d) => duration_to_json_value(d),
         Value::Uuid(u) => u.to_string(),
     })
-}
-
-pub struct AvroFileParser(AvroFileOptions);
-
-impl AvroFileParser {
-    pub fn new(options: AvroFileOptions) -> Self {
-        Self(options)
-    }
-}
-
-#[async_trait::async_trait]
-impl DataParser for AvroFileParser {
-    type Options = AvroFileOptions;
-
-    fn options(&self) -> &Self::Options {
-        &self.0
-    }
-
-    async fn spool_records(self, record_channel: &mut RecordSpoolChannel) -> RecordSpoolResult {
-        let options = self.0;
-        let reader = match options.reader() {
-            Ok(reader) => reader,
-            Err(error) => return record_channel.send(Err(error)).await.err(),
-        };
-        let AvroSchema::Record { fields, .. } = reader.writer_schema() else {
-            return record_channel.send(
-                Err(
-                    format!(
-                        "File schema for \"{:?}\" is not a record. Found {:?}",
-                        &options.file_path,
-                        reader.writer_schema()
-                    )
-                    .into()
-                )
-            )
-            .await
-            .err()
-        };
-        let nullable_union_columns: HashSet<String> = fields
-            .iter()
-            .filter_map(|f| {
-                if let AvroSchema::Union(schema) = &f.schema {
-                    if is_nullable_union_schema(schema) {
-                        return Some(f.name.to_owned());
-                    }
-                }
-                None
-            })
-            .collect();
-        for (i, record) in reader.enumerate() {
-            let record = match record {
-                Ok(Value::Record(fields)) => fields,
-                Ok(_) => {
-                    return record_channel
-                        .send(Err(format!(
-                            "Value {} from \"{:?}\" was not a record",
-                            i + 1,
-                            &options.file_path
-                        )
-                        .into()))
-                        .await
-                        .err()
-                }
-                Err(error) => return record_channel.send(Err(error.into())).await.err(),
-            };
-            let csv_iter = record.into_iter().map(|(key, value)| {
-                if nullable_union_columns.contains(&key) {
-                    if let Value::Union(union_box) = value {
-                        return map_avro_value(*union_box);
-                    }
-                }
-                map_avro_value(value)
-            });
-            let result = record_channel
-                .send(csv_result_iter_to_string(csv_iter))
-                .await;
-            if let Err(error) = result {
-                return Some(error);
-            }
-        }
-        None
-    }
 }
 
 #[cfg(test)]

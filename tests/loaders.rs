@@ -1,17 +1,8 @@
 use geoflow_rs::{
-    bulk_loading::{
-        analyze::{ColumnType, SchemaAnalyzer},
-        arcgis::ArcGisDataOptions,
-        avro::AvroFileOptions,
-        delimited::DelimitedDataOptions,
-        excel::ExcelOptions,
-        geo_json::GeoJsonOptions,
-        ipc::IpcFileOptions,
-        parquet::ParquetFileOptions,
-        shape::ShapeDataOptions,
-    },
+    bulk_loading::{DataLoader, ColumnType},
     database::utilities::create_db_pool,
 };
+use serde_json::json;
 
 #[tokio::test]
 async fn delimited_data_loading() -> Result<(), Box<dyn std::error::Error>> {
@@ -62,11 +53,12 @@ async fn delimited_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         "certno",
     ];
 
-    let mut path = std::env::current_dir()?;
-    path.push("tests/delimited data test.csv");
-    let options = DelimitedDataOptions::new(path, ',', true);
-    let analyzer = SchemaAnalyzer::from_delimited(options);
-    let schema = analyzer.schema().await?;
+    let loader = DataLoader::new(json!({
+        "file_path": "tests/delimited data test.csv",
+        "delimiter": ",",
+        "qualified": true,
+    }))?;
+    let schema = loader.schema().await?;
 
     assert_eq!(expected_table_name, schema.table_name());
 
@@ -87,8 +79,7 @@ async fn delimited_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     .await?;
     let create_statement = schema.create_statement(db_schema);
     sqlx::query(&create_statement).execute(&pool).await?;
-
-    let loader = analyzer.loader();
+    
     let copy_options = schema.copy_options(db_schema);
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 
@@ -177,11 +168,11 @@ async fn excel_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         "page",
     ];
 
-    let mut path = std::env::current_dir()?;
-    path.push("tests/excel data test.xlsx");
-    let options = ExcelOptions::new(path, String::from("tblUST_DB"));
-    let analyzer = SchemaAnalyzer::from_excel(options);
-    let schema = analyzer.schema().await?;
+    let loader = DataLoader::new(json!({
+        "file_path": "tests/excel data test.xlsx",
+        "sheet_name": "tblUST_DB",
+    }))?;
+    let schema = loader.schema().await?;
 
     assert_eq!(expected_table_name, schema.table_name());
 
@@ -203,7 +194,6 @@ async fn excel_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let create_statement = schema.create_statement(db_schema);
     sqlx::query(&create_statement).execute(&pool).await?;
 
-    let loader = analyzer.loader();
     let copy_options = schema.copy_options(db_schema);
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 
@@ -275,11 +265,10 @@ async fn shapefile_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         ("geometry", ColumnType::Geometry),
     ];
 
-    let mut path = std::env::current_dir()?;
-    path.push("tests/shape-data-test/shape_data_test.shp");
-    let options = ShapeDataOptions::new(path);
-    let analyzer = SchemaAnalyzer::from_shapefile(options);
-    let schema = analyzer.schema().await?;
+    let loader = DataLoader::new(json!({
+        "file_path": "tests/shape-data-test/shape_data_test.shp",
+    }))?;
+    let schema = loader.schema().await?;
 
     assert_eq!(expected_table_name, schema.table_name());
 
@@ -301,7 +290,6 @@ async fn shapefile_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let create_statement = schema.create_statement(db_schema);
     sqlx::query(&create_statement).execute(&pool).await?;
 
-    let loader = analyzer.loader();
     let copy_options = schema.copy_options(db_schema);
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 
@@ -357,11 +345,10 @@ async fn geojson_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         ("geometry", ColumnType::Geometry),
     ];
 
-    let mut path = std::env::current_dir()?;
-    path.push("tests/geojson data test.geojson");
-    let options = GeoJsonOptions::new(path);
-    let analyzer = SchemaAnalyzer::from_geo_json(options);
-    let schema = analyzer.schema().await?;
+    let loader = DataLoader::new(json!({
+        "file_path": "tests/geojson data test.geojson",
+    }))?;
+    let schema = loader.schema().await?;
 
     assert_eq!(expected_table_name, schema.table_name());
 
@@ -383,7 +370,6 @@ async fn geojson_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let create_statement = schema.create_statement(db_schema);
     sqlx::query(&create_statement).execute(&pool).await?;
 
-    let loader = analyzer.loader();
     let copy_options = schema.copy_options(db_schema);
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 
@@ -429,11 +415,10 @@ async fn parquet_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         ("geometry", ColumnType::Geometry),
     ];
 
-    let mut path = std::env::current_dir()?;
-    path.push("tests/parquet data test.parquet");
-    let options = ParquetFileOptions::new(path);
-    let analyzer = SchemaAnalyzer::from_parquet(options);
-    let schema = analyzer.schema().await?;
+    let loader = DataLoader::new(json!({
+        "file_path": "tests/parquet data test.parquet",
+    }))?;
+    let schema = loader.schema().await?;
 
     assert_eq!(expected_table_name, schema.table_name());
 
@@ -455,7 +440,6 @@ async fn parquet_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let create_statement = schema.create_statement(db_schema);
     sqlx::query(&create_statement).execute(&pool).await?;
 
-    let loader = analyzer.loader();
     let copy_options = schema.copy_options(db_schema);
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 
@@ -513,11 +497,10 @@ async fn ipc_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         ("certno", ColumnType::Text),
     ];
 
-    let mut path = std::env::current_dir()?;
-    path.push("tests/ipc data test.ipc");
-    let options = IpcFileOptions::new(path);
-    let analyzer = SchemaAnalyzer::from_ipc(options);
-    let schema = analyzer.schema().await?;
+    let loader = DataLoader::new(json!({
+        "file_path": "tests/ipc data test.ipc",
+    }))?;
+    let schema = loader.schema().await?;
 
     assert_eq!(expected_table_name, schema.table_name());
 
@@ -539,7 +522,6 @@ async fn ipc_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let create_statement = schema.create_statement(db_schema);
     sqlx::query(&create_statement).execute(&pool).await?;
 
-    let loader = analyzer.loader();
     let copy_options = schema.copy_options(db_schema);
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 
@@ -589,9 +571,10 @@ async fn arcgis_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         ("geometry", ColumnType::Geometry),
     ];
 
-    let options = ArcGisDataOptions::new("https://arcgis.metc.state.mn.us/server/rest/services/ESWastewater/RainGaugeSites/FeatureServer/0")?;
-    let analyzer = SchemaAnalyzer::from_arc_gis(options);
-    let schema = analyzer.schema().await?;
+    let loader = DataLoader::new(json!({
+        "url": "https://arcgis.metc.state.mn.us/server/rest/services/ESWastewater/RainGaugeSites/FeatureServer/0",
+    }))?;
+    let schema = loader.schema().await?;
 
     assert_eq!(expected_table_name, schema.table_name());
 
@@ -613,7 +596,6 @@ async fn arcgis_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let create_statement = schema.create_statement(db_schema);
     sqlx::query(&create_statement).execute(&pool).await?;
 
-    let loader = analyzer.loader();
     let copy_options = schema.copy_options(db_schema);
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 
@@ -649,11 +631,10 @@ async fn avro_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         ("timestamp_micros", ColumnType::Timestamp),
     ];
 
-    let mut path = std::env::current_dir()?;
-    path.push("tests/avro data test.avro");
-    let options = AvroFileOptions::new(path);
-    let analyzer = SchemaAnalyzer::from_avro(options);
-    let schema = analyzer.schema().await?;
+    let loader = DataLoader::new(json!({
+        "file_path": "tests/avro data test.avro",
+    }))?;
+    let schema = loader.schema().await?;
 
     assert_eq!(expected_table_name, schema.table_name());
 
@@ -681,7 +662,6 @@ async fn avro_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         .into());
     }
 
-    let loader = analyzer.loader();
     let copy_options = schema.copy_options(db_schema);
     let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
 

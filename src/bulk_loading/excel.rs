@@ -1,9 +1,7 @@
 use super::{
-    analyze::{ColumnType, Schema, SchemaParser},
+    analyze::{ColumnType, Schema},
     error::BulkDataResult,
-    load::{
-        csv_result_iter_to_string, DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult,
-    },
+    load::{csv_result_iter_to_string, RecordSpoolChannel, RecordSpoolResult},
     options::DataOptions,
     utilities::send_error_message,
 };
@@ -43,43 +41,22 @@ impl ExcelOptions {
 
 impl DataOptions for ExcelOptions {}
 
-pub struct ExcelSchemaParser(ExcelOptions);
-
-#[async_trait::async_trait]
-impl SchemaParser for ExcelSchemaParser {
-    type Options = ExcelOptions;
-    type DataParser = ExcelDataParser;
-
-    fn new(options: Self::Options) -> Self
-    where
-        Self: Sized,
-    {
-        Self(options)
-    }
-
-    async fn schema(&self) -> BulkDataResult<Schema> {
-        let Some(table_name) = self.0.file_path.file_name().and_then(|f| f.to_str()) else {
-            return Err(format!("Could not get filename for \"{:?}\"", &self.0.file_path).into())
-        };
-        let sheet = self.0.sheet()?;
-        let Some(header_row) = sheet.rows().next() else {
-            return Err(format!(
-                "Could not find header row in \"{}\" of {:?}",
-                &self.0.sheet_name, &self.0.file_path
-            ).into())
-        };
-        let columns = header_row.iter().map(|field| {
-            let field_value = map_excel_value(field)?;
-            Ok((field_value, ColumnType::Text))
-        });
-        Schema::from_result_iter(table_name, columns)
-    }
-
-    fn data_loader(self) -> DataLoader<Self::DataParser> {
-        let options = self.0;
-        let parser = ExcelDataParser::new(options);
-        DataLoader::new(parser)
-    }
+pub fn schema(options: &ExcelOptions) -> BulkDataResult<Schema> {
+    let Some(table_name) = options.file_path.file_name().and_then(|f| f.to_str()) else {
+        return Err(format!("Could not get filename for \"{:?}\"", &options.file_path).into())
+    };
+    let sheet = options.sheet()?;
+    let Some(header_row) = sheet.rows().next() else {
+        return Err(format!(
+            "Could not find header row in \"{}\" of {:?}",
+            &options.sheet_name, &options.file_path
+        ).into())
+    };
+    let columns = header_row.iter().map(|field| {
+        let field_value = map_excel_value(field)?;
+        Ok((field_value, ColumnType::Text))
+    });
+    Schema::from_result_iter(table_name, columns)
 }
 
 pub fn map_excel_value(value: &DataType) -> BulkDataResult<String> {
@@ -101,68 +78,54 @@ pub fn map_excel_value(value: &DataType) -> BulkDataResult<String> {
     })
 }
 
-pub struct ExcelDataParser(ExcelOptions);
-
-impl ExcelDataParser {
-    pub fn new(options: ExcelOptions) -> Self {
-        Self(options)
-    }
-}
-
-#[async_trait::async_trait]
-impl DataParser for ExcelDataParser {
-    type Options = ExcelOptions;
-
-    fn options(&self) -> &Self::Options {
-        &self.0
-    }
-
-    async fn spool_records(self, record_channel: &mut RecordSpoolChannel) -> RecordSpoolResult {
-        let sheet = match self.0.sheet() {
-            Ok(sheet) => sheet,
-            Err(error) => return record_channel.send(Err(error)).await.err(),
-        };
-        let mut rows = sheet.rows();
-        let header = match rows.next() {
-            Some(row) => row,
-            None => {
-                let message = format!(
-                    "Could not find a header row for excel file {:?}",
-                    self.0.file_path,
-                );
-                return send_error_message(record_channel, message).await;
-            }
-        };
-        let header_size = header.len();
-        for (row_num, row) in rows.enumerate() {
-            if row.len() != header_size {
-                let message = format!(
-                    "Excel row {} has {} values but expected {}",
-                    row_num + 1,
-                    row.len(),
-                    header_size
-                );
-                return send_error_message(record_channel, message).await;
-            }
-            let csv_iter = row.iter().map(map_excel_value);
-            let csv_data = match csv_result_iter_to_string(csv_iter) {
-                Ok(d) => d,
-                Err(error) => {
-                    let message = format!(
-                        "Excel row {} has cell(s) contains an error: {}",
-                        row_num + 1,
-                        error,
-                    );
-                    return send_error_message(record_channel, message).await;
-                }
-            };
-            let result = record_channel.send(Ok(csv_data)).await;
-            if let Err(error) = result {
-                return Some(error);
-            }
+pub async fn spool_records(
+    options: &ExcelOptions,
+    record_channel: &mut RecordSpoolChannel,
+) -> RecordSpoolResult {
+    let sheet = match options.sheet() {
+        Ok(sheet) => sheet,
+        Err(error) => return record_channel.send(Err(error)).await.err(),
+    };
+    let mut rows = sheet.rows();
+    let header = match rows.next() {
+        Some(row) => row,
+        None => {
+            let message = format!(
+                "Could not find a header row for excel file {:?}",
+                options.file_path,
+            );
+            return send_error_message(record_channel, message).await;
         }
-        None
+    };
+    let header_size = header.len();
+    for (row_num, row) in rows.enumerate() {
+        if row.len() != header_size {
+            let message = format!(
+                "Excel row {} has {} values but expected {}",
+                row_num + 1,
+                row.len(),
+                header_size
+            );
+            return send_error_message(record_channel, message).await;
+        }
+        let csv_iter = row.iter().map(map_excel_value);
+        let csv_data = match csv_result_iter_to_string(csv_iter) {
+            Ok(d) => d,
+            Err(error) => {
+                let message = format!(
+                    "Excel row {} has cell(s) contains an error: {}",
+                    row_num + 1,
+                    error,
+                );
+                return send_error_message(record_channel, message).await;
+            }
+        };
+        let result = record_channel.send(Ok(csv_data)).await;
+        if let Err(error) = result {
+            return Some(error);
+        }
     }
+    None
 }
 
 #[cfg(test)]

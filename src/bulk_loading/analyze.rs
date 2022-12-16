@@ -1,20 +1,11 @@
 use super::{
-    arcgis::{ArcGisDataOptions, ArcGisRestSchemaParser},
-    avro::{AvroFileOptions, AvroSchemaParser},
-    delimited::{DelimitedDataOptions, DelimitedSchemaParser},
     error::{BulkDataError, BulkDataResult},
-    excel::{ExcelOptions, ExcelSchemaParser},
-    geo_json::{GeoJsonOptions, GeoJsonSchemaParser},
-    ipc::{IpcFileOptions, IpcSchemaParser},
-    load::{CopyOptions, DataLoader, DataParser},
-    options::DataOptions,
-    parquet::{ParquetFileOptions, ParquetSchemaParser},
-    shape::{ShapeDataOptions, ShapeDataSchemaParser},
+    load::CopyOptions,
 };
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::{Regex, RegexBuilder};
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use sqlx::postgres::{PgHasArrayType, PgTypeInfo};
 
 lazy_static! {
@@ -211,77 +202,5 @@ impl Schema {
     #[inline]
     pub fn columns(&self) -> &[ColumnMetadata] {
         &self.columns
-    }
-}
-
-#[async_trait::async_trait]
-pub trait SchemaParser {
-    type Options: DataOptions;
-    type DataParser: DataParser + Send + Sync;
-
-    fn new(options: Self::Options) -> Self
-    where
-        Self: Sized;
-    async fn schema(&self) -> BulkDataResult<Schema>;
-    fn data_loader(self) -> DataLoader<Self::DataParser>;
-}
-
-pub struct SchemaAnalyzer<P: SchemaParser>(P);
-
-impl SchemaAnalyzer<DelimitedSchemaParser> {
-    pub fn from_delimited(options: DelimitedDataOptions) -> Self {
-        Self(DelimitedSchemaParser::new(options))
-    }
-}
-
-impl SchemaAnalyzer<ExcelSchemaParser> {
-    pub fn from_excel(options: ExcelOptions) -> Self {
-        Self(ExcelSchemaParser::new(options))
-    }
-}
-
-impl SchemaAnalyzer<GeoJsonSchemaParser> {
-    pub fn from_geo_json(options: GeoJsonOptions) -> Self {
-        Self(GeoJsonSchemaParser::new(options))
-    }
-}
-
-impl SchemaAnalyzer<ShapeDataSchemaParser> {
-    pub fn from_shapefile(options: ShapeDataOptions) -> Self {
-        Self(ShapeDataSchemaParser::new(options))
-    }
-}
-
-impl SchemaAnalyzer<ParquetSchemaParser> {
-    pub fn from_parquet(options: ParquetFileOptions) -> Self {
-        Self(ParquetSchemaParser::new(options))
-    }
-}
-
-impl SchemaAnalyzer<IpcSchemaParser> {
-    pub fn from_ipc(options: IpcFileOptions) -> Self {
-        Self(IpcSchemaParser::new(options))
-    }
-}
-
-impl SchemaAnalyzer<ArcGisRestSchemaParser> {
-    pub fn from_arc_gis(options: ArcGisDataOptions) -> Self {
-        Self(ArcGisRestSchemaParser::new(options))
-    }
-}
-
-impl SchemaAnalyzer<AvroSchemaParser> {
-    pub fn from_avro(options: AvroFileOptions) -> Self {
-        Self(AvroSchemaParser::new(options))
-    }
-}
-
-impl<P: SchemaParser> SchemaAnalyzer<P> {
-    pub async fn schema(&self) -> BulkDataResult<Schema> {
-        self.0.schema().await
-    }
-
-    pub fn loader(self) -> DataLoader<P::DataParser> {
-        self.0.data_loader()
     }
 }
