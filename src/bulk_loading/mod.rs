@@ -48,12 +48,13 @@ pub enum DataLoader {
 }
 
 impl DataLoader {
-    pub fn new(options: Value) -> BulkDataResult<Self> {
+    pub fn new(options: &Value) -> BulkDataResult<Self> {
+        let json_string = serde_json::to_string(options)?;
         let Some(object) = options.as_object() else {
             return Err("Source data options must be an object".into())
         };
         if object.contains_key("url") {
-            let arc_gis_options: ArcGisDataOptions = serde_json::from_value(options)?;
+            let arc_gis_options: ArcGisDataOptions = serde_json::from_str(&json_string)?;
             return Ok(Self::ArcGis(arc_gis_options));
         }
         let Some(file_path) = object.get("file_path").and_then(|p| p.as_str()) else {
@@ -63,13 +64,13 @@ impl DataLoader {
             return Err(format!("Could not extract a valid file extension for \"file_path\" property of \"{}\"", file_path).into())
         };
         Ok(match ext {
-            "avro" => Self::Avro(serde_json::from_value(options)?),
-            "txt" | "csv" => Self::Delimited(serde_json::from_value(options)?),
-            "xlsx" | "xls" => Self::Excel(serde_json::from_value(options)?),
-            "geojson" => Self::GeoJson(serde_json::from_value(options)?),
-            "ipc" | "feather" => Self::Ipc(serde_json::from_value(options)?),
-            "parquet" => Self::Parquet(serde_json::from_value(options)?),
-            "shp" => Self::Shape(serde_json::from_value(options)?),
+            "avro" => Self::Avro(serde_json::from_str(&json_string)?),
+            "txt" | "csv" => Self::Delimited(serde_json::from_str(&json_string)?),
+            "xlsx" | "xls" => Self::Excel(serde_json::from_str(&json_string)?),
+            "geojson" => Self::GeoJson(serde_json::from_str(&json_string)?),
+            "ipc" | "feather" => Self::Ipc(serde_json::from_str(&json_string)?),
+            "parquet" => Self::Parquet(serde_json::from_str(&json_string)?),
+            "shp" => Self::Shape(serde_json::from_str(&json_string)?),
             _ => return Err(format!("Could not extract a data loader for the extension, \"{}\"", ext).into())
         })
     }

@@ -53,7 +53,7 @@ async fn delimited_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         "certno",
     ];
 
-    let loader = DataLoader::new(json!({
+    let loader = DataLoader::new(&json!({
         "file_path": "tests/delimited data test.csv",
         "delimiter": ",",
         "qualified": true,
@@ -168,7 +168,7 @@ async fn excel_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         "page",
     ];
 
-    let loader = DataLoader::new(json!({
+    let loader = DataLoader::new(&json!({
         "file_path": "tests/excel data test.xlsx",
         "sheet_name": "tblUST_DB",
     }))?;
@@ -265,7 +265,7 @@ async fn shapefile_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         ("geometry", ColumnType::Geometry),
     ];
 
-    let loader = DataLoader::new(json!({
+    let loader = DataLoader::new(&json!({
         "file_path": "tests/shape-data-test/shape_data_test.shp",
     }))?;
     let schema = loader.schema().await?;
@@ -345,7 +345,7 @@ async fn geojson_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         ("geometry", ColumnType::Geometry),
     ];
 
-    let loader = DataLoader::new(json!({
+    let loader = DataLoader::new(&json!({
         "file_path": "tests/geojson data test.geojson",
     }))?;
     let schema = loader.schema().await?;
@@ -415,7 +415,7 @@ async fn parquet_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         ("geometry", ColumnType::Geometry),
     ];
 
-    let loader = DataLoader::new(json!({
+    let loader = DataLoader::new(&json!({
         "file_path": "tests/parquet data test.parquet",
     }))?;
     let schema = loader.schema().await?;
@@ -497,7 +497,7 @@ async fn ipc_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         ("certno", ColumnType::Text),
     ];
 
-    let loader = DataLoader::new(json!({
+    let loader = DataLoader::new(&json!({
         "file_path": "tests/ipc data test.ipc",
     }))?;
     let schema = loader.schema().await?;
@@ -571,7 +571,7 @@ async fn arcgis_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         ("geometry", ColumnType::Geometry),
     ];
 
-    let loader = DataLoader::new(json!({
+    let loader = DataLoader::new(&json!({
         "url": "https://arcgis.metc.state.mn.us/server/rest/services/ESWastewater/RainGaugeSites/FeatureServer/0",
     }))?;
     let schema = loader.schema().await?;
@@ -631,7 +631,7 @@ async fn avro_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         ("timestamp_micros", ColumnType::Timestamp),
     ];
 
-    let loader = DataLoader::new(json!({
+    let loader = DataLoader::new(&json!({
         "file_path": "tests/avro data test.avro",
     }))?;
     let schema = loader.schema().await?;
