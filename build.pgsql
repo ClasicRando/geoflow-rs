@@ -943,6 +943,9 @@ create table geoflow.source_data (
     options jsonb not null,
     table_name text not null check(table_name ~ '^[A-Z_][A-Z_0-9]{1,64}$'),
     columns geoflow.column_metadata[] not null check(geoflow.valid_column_metadata(columns)),
+    to_load boolean not null default true,
+    loaded_timestamp timestamp with time zone,
+    error_message text check(geoflow.check_not_blank_or_empty(error_message)),
     constraint source_data_load_instance_table_name unique (li_id, table_name),
     constraint source_data_load_source_id unique (li_id, load_source_id)
 );
@@ -953,7 +956,8 @@ returns geoflow.source_data
 stable
 language sql
 as $$
-select sd_id, li_id, load_source_id, user_generated, options, table_name, columns
+select sd_id, li_id, load_source_id, user_generated, options, table_name, columns,
+       to_load, loaded_timestamp, error_message
 from   geoflow.source_data
 where  sd_id = $1
 $$;
@@ -963,9 +967,27 @@ returns setof geoflow.source_data
 stable
 language sql
 as $$
-select sd_id, li_id, load_source_id, user_generated, options, table_name, columns
+select sd_id, li_id, load_source_id, user_generated, options, table_name, columns,
+       to_load, loaded_timestamp, error_message
 from   geoflow.source_data
 where  li_id = $1
+$$;
+
+create function geoflow.get_source_data_to_load(workflow_run_id bigint)
+returns setof geoflow.source_data
+stable
+language sql
+as $$
+with load_instance as (
+	select li_id
+	from   geoflow.load_instances
+	where  load_workflow_run_id = $1
+)
+select sd_id, li_id, load_source_id, user_generated, options, table_name, columns,
+       to_load, loaded_timestamp, error_message
+from   geoflow.source_data
+where  li_id in (select li_id from load_instance)
+and    to_load
 $$;
 
 create function geoflow.create_source_data_entry(
@@ -1010,6 +1032,7 @@ begin
     if not geoflow.user_can_update_ls($1, $3) then
         raise exception 'uid %s cannot create a new source data entry. User must be part of the load instance.', $1;
     end if;
+
     update geoflow.source_data
     set    load_source_id = $3,
            user_generated = $4,
@@ -1017,7 +1040,9 @@ begin
            table_name = $6,
            columns = $7
     where  sd_id = $2
-    returning sd_id, li_id, load_source_id, user_generated, options, table_name, columns into result;
+    returning sd_id, li_id, load_source_id, user_generated, options, table_name, columns,
+              to_load, loaded_timestamp, error_message
+    into result;
     return result;
 end;
 $$;
@@ -1036,9 +1061,12 @@ begin
     if not geoflow.user_can_update_ls($1, $2) then
         raise exception 'uid %s cannot create a new source data entry. User must be part of the load instance.', $1;
     end if;
+
     delete from geoflow.source_data
     where  sd_id = $2
-    returning sd_id, li_id, load_source_id, user_generated, options, table_name, columns into result;
+    returning sd_id, li_id, load_source_id, user_generated, options, table_name, columns,
+              to_load, loaded_timestamp, error_message
+    into result;
     return result;
 end;
 $$;
