@@ -35,6 +35,12 @@ pub async fn login(
     }
 }
 
+#[post("/logout")]
+pub async fn logout(cookies: &CookieJar<'_>) -> MsgPackApiResponse<&'static str> {
+    cookies.remove_private(Cookie::named("x-geoflow-uid"));
+    MsgPackApiResponse::success("Successfuly logged out user")
+}
+
 #[post("/users", data = "<user>")]
 pub async fn create_user(
     user: MsgPack<User>,

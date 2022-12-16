@@ -8,8 +8,8 @@ use bulk_loading::{
 };
 use rocket::{routes, Build, Rocket};
 use users::{
-    add_user_role, create_user, login, read_user, read_users, remove_user_role, update_user_name,
-    update_user_password,
+    add_user_role, create_user, login, logout, read_user, read_users, remove_user_role,
+    update_user_name, update_user_password,
 };
 
 pub async fn build_server() -> Result<Rocket<Build>, sqlx::Error> {
@@ -23,6 +23,7 @@ pub async fn build_server() -> Result<Rocket<Build>, sqlx::Error> {
             update_source_data,
             delete_source_data,
             login,
+            logout,
             create_user,
             read_user,
             read_users,
