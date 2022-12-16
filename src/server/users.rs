@@ -3,6 +3,7 @@ use rocket::{
     http::{Cookie, CookieJar},
     patch, post,
     serde::msgpack::MsgPack,
+    time::{Duration, OffsetDateTime},
     State,
 };
 use serde::Deserialize;
@@ -19,7 +20,12 @@ pub async fn login(
 ) -> MsgPackApiResponse<User> {
     match user.0.validate_user(pool).await {
         Ok(Some(user)) => {
-            cookies.add_private(Cookie::new("x-geoflow-uid", user.uid.to_string()));
+            let mut now = OffsetDateTime::now_utc();
+            now += Duration::days(1);
+            let cookie = Cookie::build("x-geoflow-uid", user.uid.to_string())
+                .expires(now)
+                .finish();
+            cookies.add_private(cookie);
             MsgPackApiResponse::success(user)
         }
         Ok(None) => {
