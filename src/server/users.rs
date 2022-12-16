@@ -11,7 +11,7 @@ use workflow_engine::server::MsgPackApiResponse;
 
 use crate::database::users::User;
 
-#[post("/api/v1/login", data = "<user>")]
+#[post("/login", data = "<user>")]
 pub async fn login(
     user: MsgPack<User>,
     pool: &State<PgPool>,
@@ -29,7 +29,7 @@ pub async fn login(
     }
 }
 
-#[post("/api/v1/users", data = "<user>")]
+#[post("/users", data = "<user>")]
 pub async fn create_user(
     user: MsgPack<User>,
     pool: &State<PgPool>,
@@ -47,7 +47,7 @@ pub async fn create_user(
     }
 }
 
-#[get("/api/v1/users/<uid>")]
+#[get("/users/<uid>")]
 pub async fn read_user(uid: i64, user: User) -> MsgPackApiResponse<User> {
     if user.is_admin() || user.uid == uid {
         return MsgPackApiResponse::success(user);
@@ -58,7 +58,7 @@ pub async fn read_user(uid: i64, user: User) -> MsgPackApiResponse<User> {
     ))
 }
 
-#[get("/api/v1/users")]
+#[get("/users")]
 pub async fn read_users(user: User, pool: &State<PgPool>) -> MsgPackApiResponse<Vec<User>> {
     if !user.is_admin() {
         return MsgPackApiResponse::failure(
@@ -74,7 +74,7 @@ pub struct UpdatePassword {
     new_password: String,
 }
 
-#[patch("/api/v1/users/update-password", data = "<update_password>")]
+#[patch("/users/update-password", data = "<update_password>")]
 pub async fn update_user_password(
     update_password: MsgPack<UpdatePassword>,
     user: User,
@@ -94,7 +94,7 @@ pub async fn update_user_password(
 #[derive(Deserialize)]
 pub struct UpdateName(String);
 
-#[patch("/api/v1/users/update-name", data = "<update_name>")]
+#[patch("/users/update-name", data = "<update_name>")]
 pub async fn update_user_name(
     update_name: MsgPack<UpdateName>,
     user: User,
@@ -113,7 +113,7 @@ pub struct AlterRole {
     role_id: i32,
 }
 
-#[post("/api/v1/users/roles", data = "<add_role>")]
+#[post("/users/roles", data = "<add_role>")]
 pub async fn add_user_role(
     add_role: MsgPack<AlterRole>,
     user: User,
@@ -134,7 +134,7 @@ pub async fn add_user_role(
     }
 }
 
-#[delete("/api/v1/users/roles", data = "<remove_role>")]
+#[delete("/users/roles", data = "<remove_role>")]
 pub async fn remove_user_role(
     remove_role: MsgPack<AlterRole>,
     user: User,

@@ -4,7 +4,7 @@ use workflow_engine::server::MsgPackApiResponse;
 
 use crate::database::{source_data::SourceData, users::User};
 
-#[post("/api/v1/bulk-loading/source-data", data = "<source_data>")]
+#[post("/bulk-loading/source-data", data = "<source_data>")]
 pub async fn create_source_data(
     source_data: MsgPack<SourceData>,
     pool: &State<PgPool>,
@@ -15,7 +15,7 @@ pub async fn create_source_data(
         .into()
 }
 
-#[get("/api/v1/bulk-loading/source-data/<sd_id>")]
+#[get("/bulk-loading/source-data/<sd_id>")]
 pub async fn read_single_source_data(
     sd_id: i64,
     pool: &State<PgPool>,
@@ -29,7 +29,7 @@ pub async fn read_single_source_data(
     }
 }
 
-#[get("/api/v1/bulk-loading/source-data/load-instance/<li_id>")]
+#[get("/bulk-loading/source-data/load-instance/<li_id>")]
 pub async fn read_many_source_data(
     li_id: i64,
     pool: &State<PgPool>,
@@ -37,7 +37,7 @@ pub async fn read_many_source_data(
     SourceData::read_many(li_id, pool).await.into()
 }
 
-#[put("/api/v1/bulk-loading/source-data", data = "<source_data>")]
+#[put("/bulk-loading/source-data", data = "<source_data>")]
 pub async fn update_source_data(
     source_data: MsgPack<SourceData>,
     pool: &State<PgPool>,
@@ -46,7 +46,7 @@ pub async fn update_source_data(
     source_data.0.update(user.uid, pool).await.into()
 }
 
-#[delete("/api/v1/bulk-loading/source-data/<sd_id>")]
+#[delete("/bulk-loading/source-data/<sd_id>")]
 pub async fn delete_source_data(
     sd_id: i64,
     pool: &State<PgPool>,
