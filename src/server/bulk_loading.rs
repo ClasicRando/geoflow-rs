@@ -4,7 +4,7 @@ use workflow_engine::server::MsgPackApiResponse;
 
 use crate::database::{source_data::SourceData, users::User};
 
-#[post("/bulk-loading/source-data", data = "<source_data>")]
+#[post("/bulk-loading/source-data", format = "msgpack", data = "<source_data>")]
 pub async fn create_source_data(
     source_data: MsgPack<SourceData>,
     pool: &State<PgPool>,
@@ -37,7 +37,7 @@ pub async fn read_many_source_data(
     SourceData::read_many(li_id, pool).await.into()
 }
 
-#[put("/bulk-loading/source-data", data = "<source_data>")]
+#[put("/bulk-loading/source-data", format = "msgpack", data = "<source_data>")]
 pub async fn update_source_data(
     source_data: MsgPack<SourceData>,
     pool: &State<PgPool>,

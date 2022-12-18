@@ -4,7 +4,7 @@ use workflow_engine::{ApiReponse as WEApiResponse, TaskQueueRecord};
 
 use crate::tasks::bulk_load::task_run_bulk_load;
 
-#[post("/task/run/bulk-load", data = "<task_queue_record>")]
+#[post("/task/run/bulk-load", format = "msgpack", data = "<task_queue_record>")]
 pub async fn run_bulk_load(
     task_queue_record: MsgPack<TaskQueueRecord>,
     pool: &State<PgPool>,

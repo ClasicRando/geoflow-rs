@@ -12,7 +12,7 @@ use workflow_engine::server::MsgPackApiResponse;
 
 use crate::database::users::User;
 
-#[post("/login", data = "<user>")]
+#[post("/login", format = "msgpack", data = "<user>")]
 pub async fn login(
     user: MsgPack<User>,
     pool: &State<PgPool>,
@@ -41,7 +41,7 @@ pub async fn logout(cookies: &CookieJar<'_>) -> MsgPackApiResponse<&'static str>
     MsgPackApiResponse::success("Successfuly logged out user")
 }
 
-#[post("/users", data = "<user>")]
+#[post("/users", format = "msgpack", data = "<user>")]
 pub async fn create_user(
     user: MsgPack<User>,
     pool: &State<PgPool>,
@@ -86,7 +86,7 @@ pub struct UpdatePassword {
     new_password: String,
 }
 
-#[patch("/users/update-password", data = "<update_password>")]
+#[patch("/users/update-password", format = "msgpack", data = "<update_password>")]
 pub async fn update_user_password(
     update_password: MsgPack<UpdatePassword>,
     user: User,
@@ -106,7 +106,7 @@ pub async fn update_user_password(
 #[derive(Deserialize)]
 pub struct UpdateName(String);
 
-#[patch("/users/update-name", data = "<update_name>")]
+#[patch("/users/update-name", format = "msgpack", data = "<update_name>")]
 pub async fn update_user_name(
     update_name: MsgPack<UpdateName>,
     user: User,
@@ -125,7 +125,7 @@ pub struct AlterRole {
     role_id: i32,
 }
 
-#[post("/users/roles", data = "<add_role>")]
+#[post("/users/roles", format = "msgpack", data = "<add_role>")]
 pub async fn add_user_role(
     add_role: MsgPack<AlterRole>,
     user: User,
@@ -146,7 +146,7 @@ pub async fn add_user_role(
     }
 }
 
-#[delete("/users/roles", data = "<remove_role>")]
+#[delete("/users/roles", format = "msgpack", data = "<remove_role>")]
 pub async fn remove_user_role(
     remove_role: MsgPack<AlterRole>,
     user: User,
