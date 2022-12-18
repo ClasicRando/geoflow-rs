@@ -1,4 +1,5 @@
 mod bulk_loading;
+mod tasks;
 mod users;
 
 use crate::database::utilities::create_db_pool;
@@ -7,6 +8,7 @@ use bulk_loading::{
     update_source_data,
 };
 use rocket::{routes, Build, Config, Rocket};
+use tasks::run_bulk_load;
 use users::{
     add_user_role, create_user, login, logout, read_user, read_users, remove_user_role,
     update_user_name, update_user_password,
@@ -35,6 +37,7 @@ pub async fn build_server() -> Result<Rocket<Build>, sqlx::Error> {
             update_user_name,
             add_user_role,
             remove_user_role,
+            run_bulk_load,
         ],
     ))
 }
