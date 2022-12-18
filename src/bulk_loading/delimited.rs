@@ -1,11 +1,11 @@
 use super::{
-    analyze::{ColumnType, Schema, SchemaParser},
+    analyze::{ColumnType, Schema},
     error::BulkDataResult,
-    load::{DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult},
+    load::{RecordSpoolChannel, RecordSpoolResult},
     options::DataOptions,
 };
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use tokio::{
     fs::File as TkFile,
     io::{AsyncBufReadExt, BufReader as TkBufReader, Lines as TkLines},
@@ -51,86 +51,50 @@ impl DataOptions for DelimitedDataOptions {
     }
 }
 
-pub struct DelimitedSchemaParser(DelimitedDataOptions);
-
-#[async_trait::async_trait]
-impl SchemaParser for DelimitedSchemaParser {
-    type Options = DelimitedDataOptions;
-    type DataParser = DelimitedDataParser;
-
-    fn new(options: Self::Options) -> Self
-    where
-        Self: Sized,
-    {
-        Self(options)
-    }
-
-    async fn schema(&self) -> BulkDataResult<Schema> {
-        let Some(table_name) = self.0.file_path.file_name().and_then(|f| f.to_str()) else {
-            return Err(format!("Could not get filename for \"{:?}\"", &self.0.file_path).into())
-        };
-        let Ok(mut lines) = self.0.async_lines().await else {
-            return Err(format!("Could not get lines from \"{:?}\"", &self.0.file_path).into())
-        };
-        let Ok(Some(header_line)) = lines.next_line().await else {
-            return Err(format!("Could not get first line of \"{:?}\"", &self.0.file_path).into())
-        };
-        let columns = header_line
-            .split(self.0.delimiter)
-            .map(|field| (field.trim_matches('"'), ColumnType::Text));
-        Schema::from_iter(table_name, columns)
-    }
-
-    fn data_loader(self) -> DataLoader<Self::DataParser> {
-        let options = self.0;
-        let parser = DelimitedDataParser::new(options);
-        DataLoader::new(parser)
-    }
+pub async fn schema(options: &DelimitedDataOptions) -> BulkDataResult<Schema> {
+    let Some(table_name) = options.file_path.file_name().and_then(|f| f.to_str()) else {
+        return Err(format!("Could not get filename for \"{:?}\"", &options.file_path).into())
+    };
+    let Ok(mut lines) = options.async_lines().await else {
+        return Err(format!("Could not get lines from \"{:?}\"", &options.file_path).into())
+    };
+    let Ok(Some(header_line)) = lines.next_line().await else {
+        return Err(format!("Could not get first line of \"{:?}\"", &options.file_path).into())
+    };
+    let columns = header_line
+        .split(options.delimiter)
+        .map(|field| (field.trim_matches('"'), ColumnType::Text));
+    Schema::from_iter(table_name, columns)
 }
 
-pub struct DelimitedDataParser(DelimitedDataOptions);
-
-impl DelimitedDataParser {
-    pub fn new(options: DelimitedDataOptions) -> Self {
-        Self(options)
-    }
-}
-
-#[async_trait::async_trait]
-impl DataParser for DelimitedDataParser {
-    type Options = DelimitedDataOptions;
-
-    fn options(&self) -> &Self::Options {
-        &self.0
-    }
-
-    async fn spool_records(self, record_channel: &mut RecordSpoolChannel) -> RecordSpoolResult {
-        let options = self.0;
-        let file_path = &options.file_path;
-        let Ok(mut lines) = options.async_lines().await else {
+pub async fn spool_records(
+    options: &DelimitedDataOptions,
+    record_channel: &mut RecordSpoolChannel,
+) -> RecordSpoolResult {
+    let file_path = &options.file_path;
+    let Ok(mut lines) = options.async_lines().await else {
+        return record_channel
+            .send(Err(format!("Could not open delimited data file, {:?}", file_path).into()))
+            .await
+            .err();
+    };
+    let mut line_number = 1;
+    loop {
+        let Ok(line_option) = lines.next_line().await else {
             return record_channel
-                .send(Err(format!("Could not open delimited data file, {:?}", file_path).into()))
+                .send(Err(format!("Could not read line {}", &line_number).into()))
                 .await
                 .err();
         };
-        let mut line_number = 1;
-        loop {
-            let Ok(line_option) = lines.next_line().await else {
-                return record_channel
-                    .send(Err(format!("Could not read line {}", &line_number).into()))
-                    .await
-                    .err();
-            };
-            let Some(mut line) = line_option else {
-                break;
-            };
-            line.push('\n');
-            let result = record_channel.send(Ok(line)).await;
-            if let Err(error) = result {
-                return Some(error);
-            }
-            line_number += 1;
+        let Some(mut line) = line_option else {
+            break;
+        };
+        line.push('\n');
+        let result = record_channel.send(Ok(line)).await;
+        if let Err(error) = result {
+            return Some(error);
         }
-        None
+        line_number += 1;
     }
+    None
 }

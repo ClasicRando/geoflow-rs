@@ -7,14 +7,14 @@ use self::{
 };
 use super::load::csv_result_iter_to_string;
 use crate::bulk_loading::{
-    analyze::{Schema, SchemaParser},
+    analyze::Schema,
     error::BulkDataResult,
     geo_json::feature_geometry_as_wkt,
-    load::{DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult},
+    load::{RecordSpoolChannel, RecordSpoolResult},
     options::DataOptions,
     utilities::send_error_message,
 };
-use chrono::{TimeZone, Utc, LocalResult};
+use chrono::{LocalResult, TimeZone, Utc};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -41,30 +41,61 @@ impl ArcGisDataOptions {
     }
 }
 
-pub struct ArcGisRestSchemaParser(ArcGisDataOptions);
+pub async fn schema(options: &ArcGisDataOptions) -> BulkDataResult<Schema> {
+    let metadata = options.metadata().await?;
+    metadata.try_into()
+}
 
-#[async_trait::async_trait]
-impl SchemaParser for ArcGisRestSchemaParser {
-    type Options = ArcGisDataOptions;
-    type DataParser = ArcGisRestParser;
-
-    fn new(options: Self::Options) -> Self
-    where
-        Self: Sized,
-    {
-        Self(options)
+pub async fn spool_records(
+    options: &ArcGisDataOptions,
+    record_channel: &mut RecordSpoolChannel,
+) -> RecordSpoolResult {
+    let metadata = match options.metadata().await {
+        Ok(m) => m,
+        Err(error) => return send_error_message(record_channel, error).await,
+    };
+    let query_format = metadata.query_format();
+    let fields: HashMap<String, &ServiceField> = metadata
+        .fields()
+        .map(|f| (f.name().to_owned(), f))
+        .collect();
+    let queries = match metadata.queries() {
+        Ok(q) => q,
+        Err(error) => return send_error_message(record_channel, error).await,
+    };
+    let client = reqwest::Client::new();
+    for query in queries {
+        let query = match query {
+            Ok(q) => q,
+            Err(error) => return send_error_message(record_channel, error).await,
+        };
+        let feature_collection = match fetch_query(&client, &query, query_format).await {
+            Ok(c) => c,
+            Err(error) => return send_error_message(record_channel, error).await,
+        };
+        for feature in feature_collection {
+            let geom = match feature_geometry_as_wkt(&feature) {
+                Ok(g) => g,
+                Err(error) => return send_error_message(record_channel, error).await,
+            };
+            let csv_row = match feature.properties {
+                Some(properies) => {
+                    let csv_iter = feature_properties_to_iter(&properies, &fields)
+                        .chain(std::iter::once(Ok(geom)));
+                    match csv_result_iter_to_string(csv_iter) {
+                        Ok(row) => row,
+                        Err(error) => return send_error_message(record_channel, error).await,
+                    }
+                }
+                None => String::new(),
+            };
+            let result = record_channel.send(Ok(csv_row)).await;
+            if let Err(error) = result {
+                return Some(error);
+            }
+        }
     }
-
-    async fn schema(&self) -> BulkDataResult<Schema> {
-        let metadata = self.0.metadata().await?;
-        metadata.try_into()
-    }
-
-    fn data_loader(self) -> DataLoader<Self::DataParser> {
-        let options = self.0;
-        let parser = ArcGisRestParser::new(options);
-        DataLoader::new(parser)
-    }
+    None
 }
 
 fn map_arcgis_value(value: &Value, field: &ServiceField) -> BulkDataResult<String> {
@@ -103,73 +134,6 @@ fn feature_properties_to_iter<'m, 'f: 'm>(
             };
             map_arcgis_value(value, field)
         })
-}
-
-pub struct ArcGisRestParser(ArcGisDataOptions);
-
-impl ArcGisRestParser {
-    pub fn new(options: ArcGisDataOptions) -> Self {
-        Self(options)
-    }
-}
-
-#[async_trait::async_trait]
-impl DataParser for ArcGisRestParser {
-    type Options = ArcGisDataOptions;
-
-    fn options(&self) -> &Self::Options {
-        &self.0
-    }
-
-    async fn spool_records(self, record_channel: &mut RecordSpoolChannel) -> RecordSpoolResult {
-        let options = self.0;
-        let metadata = match options.metadata().await {
-            Ok(m) => m,
-            Err(error) => return send_error_message(record_channel, error).await,
-        };
-        let query_format = metadata.query_format();
-        let fields: HashMap<String, &ServiceField> = metadata
-            .fields()
-            .map(|f| (f.name().to_owned(), f))
-            .collect();
-        let queries = match metadata.queries() {
-            Ok(q) => q,
-            Err(error) => return send_error_message(record_channel, error).await,
-        };
-        let client = reqwest::Client::new();
-        for query in queries {
-            let query = match query {
-                Ok(q) => q,
-                Err(error) => return send_error_message(record_channel, error).await,
-            };
-            let feature_collection = match fetch_query(&client, &query, query_format).await {
-                Ok(c) => c,
-                Err(error) => return send_error_message(record_channel, error).await,
-            };
-            for feature in feature_collection {
-                let geom = match feature_geometry_as_wkt(&feature) {
-                    Ok(g) => g,
-                    Err(error) => return send_error_message(record_channel, error).await,
-                };
-                let csv_row = match feature.properties {
-                    Some(properies) => {
-                        let csv_iter = feature_properties_to_iter(&properies, &fields)
-                            .chain(std::iter::once(Ok(geom)));
-                        match csv_result_iter_to_string(csv_iter) {
-                            Ok(row) => row,
-                            Err(error) => return send_error_message(record_channel, error).await,
-                        }
-                    }
-                    None => String::new(),
-                };
-                let result = record_channel.send(Ok(csv_row)).await;
-                if let Err(error) = result {
-                    return Some(error);
-                }
-            }
-        }
-        None
-    }
 }
 
 #[cfg(test)]

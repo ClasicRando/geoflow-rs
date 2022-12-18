@@ -3,6 +3,7 @@ use rocket::{
     http::{Cookie, CookieJar},
     patch, post,
     serde::msgpack::MsgPack,
+    time::{Duration, OffsetDateTime},
     State,
 };
 use serde::Deserialize;
@@ -11,7 +12,7 @@ use workflow_engine::server::MsgPackApiResponse;
 
 use crate::database::users::User;
 
-#[post("/api/v1/login", data = "<user>")]
+#[post("/login", format = "msgpack", data = "<user>")]
 pub async fn login(
     user: MsgPack<User>,
     pool: &State<PgPool>,
@@ -19,7 +20,12 @@ pub async fn login(
 ) -> MsgPackApiResponse<User> {
     match user.0.validate_user(pool).await {
         Ok(Some(user)) => {
-            cookies.add_private(Cookie::new("x-geoflow-uid", user.uid.to_string()));
+            let mut now = OffsetDateTime::now_utc();
+            now += Duration::days(1);
+            let cookie = Cookie::build("x-geoflow-uid", user.uid.to_string())
+                .expires(now)
+                .finish();
+            cookies.add_private(cookie);
             MsgPackApiResponse::success(user)
         }
         Ok(None) => {
@@ -29,7 +35,13 @@ pub async fn login(
     }
 }
 
-#[post("/api/v1/users", data = "<user>")]
+#[post("/logout")]
+pub async fn logout(cookies: &CookieJar<'_>) -> MsgPackApiResponse<&'static str> {
+    cookies.remove_private(Cookie::named("x-geoflow-uid"));
+    MsgPackApiResponse::success("Successfuly logged out user")
+}
+
+#[post("/users", format = "msgpack", data = "<user>")]
 pub async fn create_user(
     user: MsgPack<User>,
     pool: &State<PgPool>,
@@ -47,7 +59,7 @@ pub async fn create_user(
     }
 }
 
-#[get("/api/v1/users/<uid>")]
+#[get("/users/<uid>")]
 pub async fn read_user(uid: i64, user: User) -> MsgPackApiResponse<User> {
     if user.is_admin() || user.uid == uid {
         return MsgPackApiResponse::success(user);
@@ -58,7 +70,7 @@ pub async fn read_user(uid: i64, user: User) -> MsgPackApiResponse<User> {
     ))
 }
 
-#[get("/api/v1/users")]
+#[get("/users")]
 pub async fn read_users(user: User, pool: &State<PgPool>) -> MsgPackApiResponse<Vec<User>> {
     if !user.is_admin() {
         return MsgPackApiResponse::failure(
@@ -74,7 +86,7 @@ pub struct UpdatePassword {
     new_password: String,
 }
 
-#[patch("/api/v1/users/update-password", data = "<update_password>")]
+#[patch("/users/update-password", format = "msgpack", data = "<update_password>")]
 pub async fn update_user_password(
     update_password: MsgPack<UpdatePassword>,
     user: User,
@@ -94,7 +106,7 @@ pub async fn update_user_password(
 #[derive(Deserialize)]
 pub struct UpdateName(String);
 
-#[patch("/api/v1/users/update-name", data = "<update_name>")]
+#[patch("/users/update-name", format = "msgpack", data = "<update_name>")]
 pub async fn update_user_name(
     update_name: MsgPack<UpdateName>,
     user: User,
@@ -113,7 +125,7 @@ pub struct AlterRole {
     role_id: i32,
 }
 
-#[post("/api/v1/users/roles", data = "<add_role>")]
+#[post("/users/roles", format = "msgpack", data = "<add_role>")]
 pub async fn add_user_role(
     add_role: MsgPack<AlterRole>,
     user: User,
@@ -134,7 +146,7 @@ pub async fn add_user_role(
     }
 }
 
-#[delete("/api/v1/users/roles", data = "<remove_role>")]
+#[delete("/users/roles", format = "msgpack", data = "<remove_role>")]
 pub async fn remove_user_role(
     remove_role: MsgPack<AlterRole>,
     user: User,

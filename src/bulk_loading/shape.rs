@@ -1,9 +1,7 @@
 use super::{
-    analyze::{ColumnMetadata, ColumnType, Schema, SchemaParser},
+    analyze::{ColumnMetadata, ColumnType, Schema},
     error::BulkDataResult,
-    load::{
-        csv_result_iter_to_string, DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult,
-    },
+    load::{csv_result_iter_to_string, RecordSpoolChannel, RecordSpoolResult},
     options::DataOptions,
 };
 use serde::{Deserialize, Serialize};
@@ -62,50 +60,28 @@ fn column_type_from_value(value: &FieldValue) -> ColumnType {
     }
 }
 
-pub struct ShapeDataSchemaParser(ShapeDataOptions);
-
-#[async_trait::async_trait]
-impl SchemaParser for ShapeDataSchemaParser {
-    type Options = ShapeDataOptions;
-    type DataParser = ShapeDataParser;
-
-    fn new(options: ShapeDataOptions) -> Self
-    where
-        Self: Sized,
-    {
-        Self(options)
-    }
-
-    async fn schema(&self) -> BulkDataResult<Schema> {
-        let Some(table_name) = self.0.file_path.file_name().and_then(|f| f.to_str()) else {
-            return Err(format!("Could not get filename for \"{:?}\"", &self.0.file_path).into())
-        };
-        let mut feature_reader = self.0.reader()?;
-        let Some(Ok((_, record))) = feature_reader.iter_shapes_and_records().next() else {
-            return Err(format!("Could not get the first feature for \"{:?}\"", &self.0.file_path).into())
-        };
-        let mut columns: Vec<ColumnMetadata> = self
-            .0
-            .fields()?
-            .iter()
-            .filter(|f| f.name() != "DeletionFlag")
-            .map(|field| -> BulkDataResult<ColumnMetadata> {
-                let field_name = field.name();
-                let Some(field_value) = record.get(field_name) else {
-                    return Err(format!("Could not find value for field {}", field_name).into())
-                };
-                ColumnMetadata::new(field_name, column_type_from_value(field_value))
-            })
-            .collect::<BulkDataResult<_>>()?;
-        columns.push(ColumnMetadata::new("geometry", ColumnType::Geometry)?);
-        Schema::new(table_name, columns)
-    }
-
-    fn data_loader(self) -> DataLoader<Self::DataParser> {
-        let options = self.0;
-        let parser = ShapeDataParser::new(options);
-        DataLoader::new(parser)
-    }
+pub fn schema(options: &ShapeDataOptions) -> BulkDataResult<Schema> {
+    let Some(table_name) = options.file_path.file_name().and_then(|f| f.to_str()) else {
+        return Err(format!("Could not get filename for \"{:?}\"", &options.file_path).into())
+    };
+    let mut feature_reader = options.reader()?;
+    let Some(Ok((_, record))) = feature_reader.iter_shapes_and_records().next() else {
+        return Err(format!("Could not get the first feature for \"{:?}\"", &options.file_path).into())
+    };
+    let mut columns: Vec<ColumnMetadata> = options
+        .fields()?
+        .iter()
+        .filter(|f| f.name() != "DeletionFlag")
+        .map(|field| -> BulkDataResult<ColumnMetadata> {
+            let field_name = field.name();
+            let Some(field_value) = record.get(field_name) else {
+                return Err(format!("Could not find value for field {}", field_name).into())
+            };
+            ColumnMetadata::new(field_name, column_type_from_value(field_value))
+        })
+        .collect::<BulkDataResult<_>>()?;
+    columns.push(ColumnMetadata::new("geometry", ColumnType::Geometry)?);
+    Schema::new(table_name, columns)
 }
 
 fn map_field_value(value: FieldValue) -> String {
@@ -137,69 +113,54 @@ fn map_field_value(value: FieldValue) -> String {
     }
 }
 
-pub struct ShapeDataParser(ShapeDataOptions);
-
-impl ShapeDataParser {
-    pub fn new(options: ShapeDataOptions) -> Self {
-        Self(options)
-    }
-}
-
-#[async_trait::async_trait]
-impl DataParser for ShapeDataParser {
-    type Options = ShapeDataOptions;
-
-    fn options(&self) -> &Self::Options {
-        &self.0
-    }
-
-    async fn spool_records(mut self, record_channel: &mut RecordSpoolChannel) -> RecordSpoolResult {
-        let options = self.0;
-        let fields = match options.fields() {
-            Ok(fields) => fields,
-            Err(error) => return record_channel.send(Err(error)).await.err(),
+pub async fn spool_records(
+    options: &ShapeDataOptions,
+    record_channel: &mut RecordSpoolChannel,
+) -> RecordSpoolResult {
+    let fields = match options.fields() {
+        Ok(fields) => fields,
+        Err(error) => return record_channel.send(Err(error)).await.err(),
+    };
+    let mut reader = match options.reader() {
+        Ok(reader) => reader,
+        Err(error) => return record_channel.send(Err(error)).await.err(),
+    };
+    for (feature_number, feature) in reader.iter_shapes_and_records().enumerate() {
+        let Ok((shape, mut record)) = feature else {
+            return record_channel
+                .send(Err(format!("Could not obtain feature {}", &feature_number).into()))
+                .await
+                .err();
         };
-        let mut reader = match options.reader() {
-            Ok(reader) => reader,
-            Err(error) => return record_channel.send(Err(error)).await.err(),
-        };
-        for (feature_number, feature) in reader.iter_shapes_and_records().enumerate() {
-            let Ok((shape, mut record)) = feature else {
-                return record_channel
-                    .send(Err(format!("Could not obtain feature {}", &feature_number).into()))
-                    .await
-                    .err();
-            };
-            let wkt = match shape {
-                Shape::NullShape => String::new(),
-                _ => {
-                    let Ok(geo) = geo_types::Geometry::<f64>::try_from(shape) else {
-                        return record_channel
-                            .send(Err(format!("Could not obtain shape for feature {}", &feature_number).into()))
-                            .await
-                            .err();
-                    };
-                    geo.wkt_string()
-                }
-            };
-            let csv_iter = fields
-                .iter()
-                .map(|f| -> BulkDataResult<String> {
-                    let Some(field_value) = record.remove(f.name()) else {
-                        return Err(format!("Could not find field \"{}\" in record number {}", f.name(), feature_number).into())
-                    };
-                    Ok(map_field_value(field_value))
-                })
-                .chain(std::iter::once(Ok(wkt)));
-            let result = record_channel
-                .send(csv_result_iter_to_string(csv_iter))
-                .await;
-            if let Err(error) = result {
-                return Some(error);
+        let wkt = match shape {
+            Shape::NullShape => String::new(),
+            _ => {
+                let Ok(geo) = geo_types::Geometry::<f64>::try_from(shape) else {
+                    return record_channel
+                        .send(Err(format!("Could not obtain shape for feature {}", &feature_number).into()))
+                        .await
+                        .err();
+                };
+                geo.wkt_string()
             }
+        };
+        let csv_iter = fields
+            .iter()
+            .map(|f| -> BulkDataResult<String> {
+                let Some(field_value) = record.remove(f.name()) else {
+                    return Err(format!("Could not find field \"{}\" in record number {}", f.name(), feature_number).into())
+                };
+                Ok(map_field_value(field_value))
+            })
+            .chain(std::iter::once(Ok(wkt)));
+        let result = record_channel
+            .send(csv_result_iter_to_string(csv_iter))
+            .await;
+        if let Err(error) = result {
+            return Some(error);
         }
-        None
     }
+    None
 }
 
 #[cfg(test)]

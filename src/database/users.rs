@@ -1,4 +1,5 @@
 use super::utilities::start_transaction;
+use chrono::{TimeZone, Utc};
 use rocket::{
     http::Status,
     outcome::IntoOutcome,
@@ -42,6 +43,15 @@ impl<'r> FromRequest<'r> for User {
         let Some(cookie) = req.cookies().get_private("x-geoflow-uid") else {
             return Outcome::Failure((Status::BadRequest, "This endpoint requires an authenticated user"))
         };
+        let expired = cookie
+            .expires()
+            .and_then(|e| e.datetime())
+            .and_then(|d| Utc.timestamp_opt(d.unix_timestamp(), 0).single())
+            .map(|d| d.timestamp() < Utc::now().timestamp())
+            .unwrap_or(true);
+        if expired {
+            return Outcome::Failure((Status::BadRequest, "User auth has exired"))
+        }
         let Ok(uid) = cookie.value().parse() else {
             return Outcome::Failure((Status::BadRequest, "Could not parse a value for cookie \"x-geoflow-uid\""))
         };

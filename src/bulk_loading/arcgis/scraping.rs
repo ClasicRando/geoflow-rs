@@ -9,7 +9,7 @@ static MAX_RETRY: i32 = 5;
 #[derive(Debug, PartialEq, Eq)]
 pub enum QueryFormat {
     GeoJSON,
-    JSON,
+    Json,
     NotSupported(String),
 }
 
@@ -17,7 +17,7 @@ impl QueryFormat {
     pub fn as_str(&self) -> &str {
         match self {
             Self::GeoJSON => "geojson",
-            Self::JSON => "json",
+            Self::Json => "json",
             Self::NotSupported(name) => name.as_str(),
         }
     }
@@ -37,7 +37,7 @@ impl QueryFormat {
                     return Err("Expected a Feature collect but got Feature".into())
                 }
             },
-            Self::JSON => response.json::<JsonQueryResponse>().await?.into(),
+            Self::Json => response.json::<JsonQueryResponse>().await?.into(),
             Self::NotSupported(name) => {
                 return Err(
                     format!("Cannot read the query response for format \"{}\"", name).into(),
@@ -54,7 +54,7 @@ impl From<&str> for QueryFormat {
         if formats.contains("geojson") {
             Self::GeoJSON
         } else if formats.contains("json") {
-            Self::JSON
+            Self::Json
         } else {
             let format = match formats.split(',').next() {
                 Some(f) => f.to_owned(),
@@ -154,7 +154,7 @@ mod tests {
     #[test]
     fn query_format_as_str() {
         let query_format_geo_json = QueryFormat::GeoJSON;
-        let query_format_json = QueryFormat::JSON;
+        let query_format_json = QueryFormat::Json;
         let query_format_test = QueryFormat::NotSupported(String::from("test"));
 
         assert_eq!("geojson", query_format_geo_json.as_str());
@@ -179,13 +179,13 @@ mod tests {
         let query_format_multi_other = QueryFormat::from(multi_other);
 
         assert_eq!(QueryFormat::GeoJSON, query_format_geo_json);
-        assert_eq!(QueryFormat::JSON, query_format_json);
+        assert_eq!(QueryFormat::Json, query_format_json);
         assert_eq!(
             QueryFormat::NotSupported(other.to_lowercase()),
             query_format_other
         );
         assert_eq!(QueryFormat::GeoJSON, query_format_multi_geo_json);
-        assert_eq!(QueryFormat::JSON, query_format_multi_json);
+        assert_eq!(QueryFormat::Json, query_format_multi_json);
         assert_eq!(
             QueryFormat::NotSupported(other.to_lowercase()),
             query_format_multi_other

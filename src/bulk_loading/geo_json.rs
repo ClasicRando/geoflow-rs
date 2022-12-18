@@ -1,7 +1,7 @@
 use super::{
-    analyze::{ColumnType, Schema, SchemaParser},
+    analyze::{ColumnType, Schema},
     error::BulkDataResult,
-    load::{csv_iter_to_string, DataLoader, DataParser, RecordSpoolChannel, RecordSpoolResult},
+    load::{csv_iter_to_string, RecordSpoolChannel, RecordSpoolResult},
     options::DataOptions,
     utilities::send_error_message,
 };
@@ -56,77 +56,56 @@ impl GeoJsonOptions {
 
 impl DataOptions for GeoJsonOptions {}
 
-pub struct GeoJsonSchemaParser(GeoJsonOptions);
+pub fn schema(options: &GeoJsonOptions) -> BulkDataResult<Schema> {
+    let Some(table_name) = options.file_path.file_name().and_then(|f| f.to_str()) else {
+        return Err(format!("Could not get filename for \"{:?}\"", &options.file_path).into())
+    };
+    let feature_reader = options.reader()?;
+    let mut undefined_type = false;
+    let mut features = feature_reader.features();
+    let first_feature = match features.next() {
+        Some(Ok(f)) => f,
+        Some(Err(error)) => return Err(error.into()),
+        None => return Schema::new(table_name, vec![]),
+    };
+    let mut columns: Vec<(String, Option<ColumnType>)> = first_feature
+        .properties_iter()
+        .map(|(field, value)| {
+            let typ = column_type_from_value(value);
+            undefined_type = undefined_type || typ.is_none();
+            (field.to_owned(), typ)
+        })
+        .collect();
 
-#[async_trait::async_trait]
-impl SchemaParser for GeoJsonSchemaParser {
-    type Options = GeoJsonOptions;
-    type DataParser = GeoJsonParser;
-
-    fn new(options: GeoJsonOptions) -> Self
-    where
-        Self: Sized,
-    {
-        Self(options)
+    if !undefined_type {
+        return collect_columns_into_schema(table_name, columns);
     }
 
-    async fn schema(&self) -> BulkDataResult<Schema> {
-        let Some(table_name) = self.0.file_path.file_name().and_then(|f| f.to_str()) else {
-            return Err(format!("Could not get filename for \"{:?}\"", &self.0.file_path).into())
-        };
-        let feature_reader = self.0.reader()?;
-        let mut undefined_type = false;
-        let mut features = feature_reader.features();
-        let first_feature = match features.next() {
-            Some(Ok(f)) => f,
-            Some(Err(error)) => return Err(error.into()),
-            None => return Schema::new(table_name, vec![]),
-        };
-        let mut columns: Vec<(String, Option<ColumnType>)> = first_feature
-            .properties_iter()
-            .map(|(field, value)| {
-                let typ = column_type_from_value(value);
-                undefined_type = undefined_type || typ.is_none();
-                (field.to_owned(), typ)
-            })
-            .collect();
-
-        if !undefined_type {
-            return collect_columns_into_schema(table_name, columns);
-        }
-
-        for feature in features {
-            let feature = feature?;
-            for (i, (field, value)) in feature.properties_iter().enumerate() {
-                match columns.get_mut(i) {
-                    Some((_, Some(_))) => continue,
-                    Some((_, typ)) => {
-                        *typ = column_type_from_value(value);
-                        undefined_type = undefined_type || typ.is_none();
-                    }
-                    None => return Err(
-                        format!(
-                            "Found column with index {} named \"{}\" that was not found in the first feature",
-                            i,
-                            field
-                        )
-                        .into()
-                    )
+    for feature in features {
+        let feature = feature?;
+        for (i, (field, value)) in feature.properties_iter().enumerate() {
+            match columns.get_mut(i) {
+                Some((_, Some(_))) => continue,
+                Some((_, typ)) => {
+                    *typ = column_type_from_value(value);
+                    undefined_type = undefined_type || typ.is_none();
                 }
+                None => return Err(
+                    format!(
+                        "Found column with index {} named \"{}\" that was not found in the first feature",
+                        i,
+                        field
+                    )
+                    .into()
+                )
             }
-            if !undefined_type {
-                break;
-            }
-            undefined_type = false;
         }
-        collect_columns_into_schema(table_name, columns)
+        if !undefined_type {
+            break;
+        }
+        undefined_type = false;
     }
-
-    fn data_loader(self) -> DataLoader<Self::DataParser> {
-        let options = self.0;
-        let parser = GeoJsonParser::new(options);
-        DataLoader::new(parser)
-    }
+    collect_columns_into_schema(table_name, columns)
 }
 
 pub fn map_json_value(value: &JsonValue) -> String {
@@ -158,52 +137,36 @@ fn feature_properties_to_iter(
         .map(|(_, value)| map_json_value(value))
 }
 
-pub struct GeoJsonParser(GeoJsonOptions);
-
-impl GeoJsonParser {
-    pub fn new(options: GeoJsonOptions) -> Self {
-        Self(options)
-    }
-}
-
-#[async_trait::async_trait]
-impl DataParser for GeoJsonParser {
-    type Options = GeoJsonOptions;
-
-    fn options(&self) -> &Self::Options {
-        &self.0
-    }
-
-    async fn spool_records(self, record_channel: &mut RecordSpoolChannel) -> RecordSpoolResult {
-        let options = self.0;
-        let reader = match options.reader() {
-            Ok(r) => r,
+pub async fn spool_records(
+    options: &GeoJsonOptions,
+    record_channel: &mut RecordSpoolChannel,
+) -> RecordSpoolResult {
+    let reader = match options.reader() {
+        Ok(r) => r,
+        Err(error) => return send_error_message(record_channel, error).await,
+    };
+    for feature in reader.features() {
+        let feature = match feature {
+            Ok(f) => f,
             Err(error) => return send_error_message(record_channel, error).await,
         };
-        for feature in reader.features() {
-            let feature = match feature {
-                Ok(f) => f,
-                Err(error) => return send_error_message(record_channel, error).await,
-            };
-            let geom = match feature_geometry_as_wkt(&feature) {
-                Ok(g) => g,
-                Err(error) => return send_error_message(record_channel, error).await,
-            };
-            let csv_row = match feature.properties {
-                Some(properies) => {
-                    let csv_iter =
-                        feature_properties_to_iter(&properies).chain(std::iter::once(geom));
-                    csv_iter_to_string(csv_iter)
-                }
-                None => String::new(),
-            };
-            let result = record_channel.send(Ok(csv_row)).await;
-            if let Err(error) = result {
-                return Some(error);
+        let geom = match feature_geometry_as_wkt(&feature) {
+            Ok(g) => g,
+            Err(error) => return send_error_message(record_channel, error).await,
+        };
+        let csv_row = match feature.properties {
+            Some(properies) => {
+                let csv_iter = feature_properties_to_iter(&properies).chain(std::iter::once(geom));
+                csv_iter_to_string(csv_iter)
             }
+            None => String::new(),
+        };
+        let result = record_channel.send(Ok(csv_row)).await;
+        if let Err(error) = result {
+            return Some(error);
         }
-        None
     }
+    None
 }
 
 #[cfg(test)]
