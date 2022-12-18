@@ -4,9 +4,10 @@ use geoflow_rs::{
 };
 use serde_json::json;
 
+const DB_SCHEMA: &str = "bulk_loading";
+
 #[tokio::test]
 async fn delimited_data_loading() -> Result<(), Box<dyn std::error::Error>> {
-    let db_schema = "geoflow";
     let expected_table_name = "delimited_data_test";
     let expected_column_names = [
         "facility_id",
@@ -72,15 +73,15 @@ async fn delimited_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let pool = create_db_pool().await?;
     sqlx::query(&format!(
         "drop table if exists {}.{}",
-        db_schema,
+        DB_SCHEMA,
         schema.table_name()
     ))
     .execute(&pool)
     .await?;
-    let create_statement = schema.create_statement(db_schema);
+    let create_statement = schema.create_statement(DB_SCHEMA);
     sqlx::query(&create_statement).execute(&pool).await?;
     
-    let copy_options = schema.copy_options(db_schema);
+    let copy_options = schema.copy_options(DB_SCHEMA);
     let records_loaded = loader.load_data(copy_options, &pool).await?;
 
     assert_eq!(299_u64, records_loaded);
@@ -90,7 +91,6 @@ async fn delimited_data_loading() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn excel_data_loading() -> Result<(), Box<dyn std::error::Error>> {
-    let db_schema = "geoflow";
     let expected_table_name = "excel_data_test";
     let expected_column_names = [
         "incidentnumber",
@@ -186,15 +186,15 @@ async fn excel_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let pool = create_db_pool().await?;
     sqlx::query(&format!(
         "drop table if exists {}.{}",
-        db_schema,
+        DB_SCHEMA,
         schema.table_name()
     ))
     .execute(&pool)
     .await?;
-    let create_statement = schema.create_statement(db_schema);
+    let create_statement = schema.create_statement(DB_SCHEMA);
     sqlx::query(&create_statement).execute(&pool).await?;
 
-    let copy_options = schema.copy_options(db_schema);
+    let copy_options = schema.copy_options(DB_SCHEMA);
     let records_loaded = loader.load_data(copy_options, &pool).await?;
 
     assert_eq!(2000_u64, records_loaded);
@@ -204,7 +204,6 @@ async fn excel_data_loading() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn shapefile_data_loading() -> Result<(), Box<dyn std::error::Error>> {
-    let db_schema = "geoflow";
     let expected_table_name = "shape_data_test";
     let expected_column_names = [
         ("item_id", ColumnType::Text),
@@ -282,15 +281,15 @@ async fn shapefile_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let pool = create_db_pool().await?;
     sqlx::query(&format!(
         "drop table if exists {}.{}",
-        db_schema,
+        DB_SCHEMA,
         schema.table_name()
     ))
     .execute(&pool)
     .await?;
-    let create_statement = schema.create_statement(db_schema);
+    let create_statement = schema.create_statement(DB_SCHEMA);
     sqlx::query(&create_statement).execute(&pool).await?;
 
-    let copy_options = schema.copy_options(db_schema);
+    let copy_options = schema.copy_options(DB_SCHEMA);
     let records_loaded = loader.load_data(copy_options, &pool).await?;
 
     assert_eq!(1244_u64, records_loaded);
@@ -301,7 +300,6 @@ async fn shapefile_data_loading() -> Result<(), Box<dyn std::error::Error>> {
 #[tokio::test]
 async fn geojson_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     //https://arcgis.metc.state.mn.us/server/rest/services/ESWastewater/RainGaugeSites/FeatureServer
-    let db_schema = "geoflow";
     let expected_table_name = "geojson_data_test";
     let expected_column_names = [
         ("objectid", ColumnType::Number),
@@ -362,15 +360,15 @@ async fn geojson_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let pool = create_db_pool().await?;
     sqlx::query(&format!(
         "drop table if exists {}.{}",
-        db_schema,
+        DB_SCHEMA,
         schema.table_name()
     ))
     .execute(&pool)
     .await?;
-    let create_statement = schema.create_statement(db_schema);
+    let create_statement = schema.create_statement(DB_SCHEMA);
     sqlx::query(&create_statement).execute(&pool).await?;
 
-    let copy_options = schema.copy_options(db_schema);
+    let copy_options = schema.copy_options(DB_SCHEMA);
     let records_loaded = loader.load_data(copy_options, &pool).await?;
 
     assert_eq!(26_u64, records_loaded);
@@ -381,7 +379,6 @@ async fn geojson_data_loading() -> Result<(), Box<dyn std::error::Error>> {
 #[tokio::test]
 async fn parquet_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     //https://arcgis.metc.state.mn.us/server/rest/services/ESWastewater/RainGaugeSites/FeatureServer
-    let db_schema = "geoflow";
     let expected_table_name = "parquet_data_test";
     let expected_column_names = [
         ("objectid", ColumnType::BigInt),
@@ -432,15 +429,15 @@ async fn parquet_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let pool = create_db_pool().await?;
     sqlx::query(&format!(
         "drop table if exists {}.{}",
-        db_schema,
+        DB_SCHEMA,
         schema.table_name()
     ))
     .execute(&pool)
     .await?;
-    let create_statement = schema.create_statement(db_schema);
+    let create_statement = schema.create_statement(DB_SCHEMA);
     sqlx::query(&create_statement).execute(&pool).await?;
 
-    let copy_options = schema.copy_options(db_schema);
+    let copy_options = schema.copy_options(DB_SCHEMA);
     let records_loaded = loader.load_data(copy_options, &pool).await?;
 
     assert_eq!(10000_u64, records_loaded);
@@ -450,7 +447,6 @@ async fn parquet_data_loading() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn ipc_data_loading() -> Result<(), Box<dyn std::error::Error>> {
-    let db_schema = "geoflow";
     let expected_table_name = "ipc_data_test";
     let expected_column_names = [
         ("facility_id", ColumnType::Text),
@@ -514,15 +510,15 @@ async fn ipc_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let pool = create_db_pool().await?;
     sqlx::query(&format!(
         "drop table if exists {}.{}",
-        db_schema,
+        DB_SCHEMA,
         schema.table_name()
     ))
     .execute(&pool)
     .await?;
-    let create_statement = schema.create_statement(db_schema);
+    let create_statement = schema.create_statement(DB_SCHEMA);
     sqlx::query(&create_statement).execute(&pool).await?;
 
-    let copy_options = schema.copy_options(db_schema);
+    let copy_options = schema.copy_options(DB_SCHEMA);
     let records_loaded = loader.load_data(copy_options, &pool).await?;
 
     assert_eq!(299_u64, records_loaded);
@@ -533,7 +529,6 @@ async fn ipc_data_loading() -> Result<(), Box<dyn std::error::Error>> {
 #[tokio::test]
 async fn arcgis_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     //https://arcgis.metc.state.mn.us/server/rest/services/ESWastewater/RainGaugeSites/FeatureServer
-    let db_schema = "geoflow";
     let expected_table_name = "raingaugesites";
     let expected_column_names = [
         ("objectid", ColumnType::Integer),
@@ -588,15 +583,15 @@ async fn arcgis_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let pool = create_db_pool().await?;
     sqlx::query(&format!(
         "drop table if exists {}.{}",
-        db_schema,
+        DB_SCHEMA,
         schema.table_name()
     ))
     .execute(&pool)
     .await?;
-    let create_statement = schema.create_statement(db_schema);
+    let create_statement = schema.create_statement(DB_SCHEMA);
     sqlx::query(&create_statement).execute(&pool).await?;
 
-    let copy_options = schema.copy_options(db_schema);
+    let copy_options = schema.copy_options(DB_SCHEMA);
     let records_loaded = loader.load_data(copy_options, &pool).await?;
 
     assert_eq!(26_u64, records_loaded);
@@ -606,7 +601,6 @@ async fn arcgis_data_loading() -> Result<(), Box<dyn std::error::Error>> {
 
 #[tokio::test]
 async fn avro_data_loading() -> Result<(), Box<dyn std::error::Error>> {
-    let db_schema = "geoflow";
     let expected_table_name = "avro_data_test";
     let expected_column_names = [
         ("int", ColumnType::Integer),
@@ -648,12 +642,12 @@ async fn avro_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     let pool = create_db_pool().await?;
     sqlx::query(&format!(
         "drop table if exists {}.{}",
-        db_schema,
+        DB_SCHEMA,
         schema.table_name()
     ))
     .execute(&pool)
     .await?;
-    let create_statement = schema.create_statement(db_schema);
+    let create_statement = schema.create_statement(DB_SCHEMA);
     if let Err(error) = sqlx::query(&create_statement).execute(&pool).await {
         return Err(format!(
             "Error attempting to execute create statement \"{}\".\n{}",
@@ -662,7 +656,7 @@ async fn avro_data_loading() -> Result<(), Box<dyn std::error::Error>> {
         .into());
     }
 
-    let copy_options = schema.copy_options(db_schema);
+    let copy_options = schema.copy_options(DB_SCHEMA);
     let records_loaded = loader.load_data(copy_options, &pool).await?;
 
     assert_eq!(20_u64, records_loaded);
