@@ -114,7 +114,7 @@ impl DataLoader {
         }
     }
 
-    pub async fn load_data(self, copy_options: CopyOptions, pool: PgPool) -> BulkLoadResult {
+    pub async fn load_data(self, copy_options: CopyOptions, pool: &PgPool) -> BulkLoadResult {
         let copy_statement = self.copy_statement(copy_options);
         let mut copy = pool.copy_in_raw(&copy_statement).await?;
         let (mut tx, mut rx) = mpsc_channel(1000);

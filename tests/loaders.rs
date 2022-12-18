@@ -81,7 +81,7 @@ async fn delimited_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     sqlx::query(&create_statement).execute(&pool).await?;
     
     let copy_options = schema.copy_options(db_schema);
-    let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
+    let records_loaded = loader.load_data(copy_options, &pool).await?;
 
     assert_eq!(299_u64, records_loaded);
 
@@ -195,7 +195,7 @@ async fn excel_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     sqlx::query(&create_statement).execute(&pool).await?;
 
     let copy_options = schema.copy_options(db_schema);
-    let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
+    let records_loaded = loader.load_data(copy_options, &pool).await?;
 
     assert_eq!(2000_u64, records_loaded);
 
@@ -291,7 +291,7 @@ async fn shapefile_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     sqlx::query(&create_statement).execute(&pool).await?;
 
     let copy_options = schema.copy_options(db_schema);
-    let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
+    let records_loaded = loader.load_data(copy_options, &pool).await?;
 
     assert_eq!(1244_u64, records_loaded);
 
@@ -371,7 +371,7 @@ async fn geojson_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     sqlx::query(&create_statement).execute(&pool).await?;
 
     let copy_options = schema.copy_options(db_schema);
-    let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
+    let records_loaded = loader.load_data(copy_options, &pool).await?;
 
     assert_eq!(26_u64, records_loaded);
 
@@ -441,7 +441,7 @@ async fn parquet_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     sqlx::query(&create_statement).execute(&pool).await?;
 
     let copy_options = schema.copy_options(db_schema);
-    let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
+    let records_loaded = loader.load_data(copy_options, &pool).await?;
 
     assert_eq!(10000_u64, records_loaded);
 
@@ -523,7 +523,7 @@ async fn ipc_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     sqlx::query(&create_statement).execute(&pool).await?;
 
     let copy_options = schema.copy_options(db_schema);
-    let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
+    let records_loaded = loader.load_data(copy_options, &pool).await?;
 
     assert_eq!(299_u64, records_loaded);
 
@@ -597,7 +597,7 @@ async fn arcgis_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     sqlx::query(&create_statement).execute(&pool).await?;
 
     let copy_options = schema.copy_options(db_schema);
-    let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
+    let records_loaded = loader.load_data(copy_options, &pool).await?;
 
     assert_eq!(26_u64, records_loaded);
 
@@ -663,7 +663,7 @@ async fn avro_data_loading() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let copy_options = schema.copy_options(db_schema);
-    let records_loaded = loader.load_data(copy_options, pool.clone()).await?;
+    let records_loaded = loader.load_data(copy_options, &pool).await?;
 
     assert_eq!(20_u64, records_loaded);
 
