@@ -30,6 +30,26 @@ impl User {
     pub fn is_admin(&self) -> bool {
         self.roles.iter().any(|r| r.name == "admin")
     }
+
+    pub fn is_collection(&self) -> bool {
+        self.roles.iter().any(|r| r.name == "collection" || r.name == "admin")
+    }
+
+    pub fn is_load(&self) -> bool {
+        self.roles.iter().any(|r| r.name == "load" || r.name == "admin")
+    }
+
+    pub fn is_check(&self) -> bool {
+        self.roles.iter().any(|r| r.name == "check" || r.name == "admin")
+    }
+
+    pub fn can_create_data_source(&self) -> bool {
+        self.roles.iter().any(|r| r.name == "create_ds" || r.name == "admin")
+    }
+
+    pub fn can_create_load_instance(&self) -> bool {
+        self.roles.iter().any(|r| r.name == "create_ls" || r.name == "admin")
+    }
 }
 
 #[rocket::async_trait]

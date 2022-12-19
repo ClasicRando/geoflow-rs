@@ -561,16 +561,95 @@ as $$
     );
 $$;
 
+create function geoflow.region_change()
+returns trigger
+language plpgsql
+stable
+as $$
+declare
+    v_country text;
+    v_prov text;
+begin
+    begin
+        select distinct country_name
+        into   v_country
+        from   geoflow.regions
+        where  country_code = new.country_code;
+
+        if v_country != new.country_name then
+            raise exception 'Country name of the current record does not match the name found in the table. Expected "%", found "%"', v_country, new.country_name;
+        end if;
+    exception
+        when no_data_found then
+            null;
+    end;
+
+    if new.prov_code is null then
+        return new;
+    end if;
+
+    begin
+        select distinct prov_name
+        into   v_prov
+        from   geoflow.regions
+        where  country_code = new.country_code
+        and    prov_code = new.prov_code;
+
+        if v_prov != new.prov_name then
+            raise exception 'Prov name of the current record does not match the name found in the table. Expected "%", found "%"', v_prov, new.prov_name;
+        end if;
+    exception
+        when no_data_found then
+            null;
+    end;
+
+    select count(0)
+    into   v_check
+    from   geoflow.regions
+    where  country_code = new.country_code
+    and    coalesce(prov_code,'x') = coalesce(new.prov_code,'x')
+    and    coalesce(county,'x') = coalesce(new.county,'x');
+
+    if v_check > 0 then
+        raise exception 'Attempted to insert a record that already exists. "%", "%", "%"', new.country_code, new.prov_code, new.county;
+    end if;
+
+    return new;
+end;
+$$;
+
 create table geoflow.regions (
     region_id bigint primary key generated always as identity,
     country_code text not null check(geoflow.check_not_blank_or_empty(country_code)),
     country_name text not null check(geoflow.check_not_blank_or_empty(country_name)),
     prov_code text check(geoflow.check_not_blank_or_empty(prov_code)),
     prov_name text check(geoflow.check_not_blank_or_empty(prov_name)),
-    county text check(geoflow.check_not_blank_or_empty(county))
+    county text check(geoflow.check_not_blank_or_empty(county)),
+    constraint regions_prov_check check(
+        case
+            when prov_code is not null and prov_name is null then false
+            when prov_code is null and prov_name is not null then false
+            else true
+        end
+    ),
+    constraint regions_county_prov_check check(
+        case
+            when county is not null and prov_code is null then false
+            else true
+        end
+    ),
+    constraint regions_unique unique (country_code,prov_code,county)
 );
 
-insert into geoflow.regions(country_code,prov_code,name,country_name)
+call audit.audit_table('geoflow.regions');
+
+create trigger region_change
+    before update or insert
+    on geoflow.regions
+    for each row
+    execute procedure geoflow.region_change();
+
+insert into geoflow.regions(country_code,prov_code,prov_name,country_name)
 values('US','AL','Alabama','United States'),
 ('US','AK','Alaska','United States'),
 ('US','AZ','Arizona','United States'),
@@ -640,7 +719,9 @@ values('US','AL','Alabama','United States'),
 ('CA','ON','Ontario','Canada'),
 ('CA','PE','Prince Edward Island','Canada'),
 ('CA','QC','Quebec','Canada'),
-('CA','YT','Yukon','Canada');
+('CA','YT','Yukon','Canada'),
+('CA',null,null,'Canada'),
+('US',null,null,'United States');
 
 create table geoflow.warehouse_types (
     wt_id integer primary key generated always as identity,
@@ -662,8 +743,12 @@ language plpgsql
 stable
 as $$
 begin
-    if TG_OP = 'INSERT' and not geoflow.user_can_create_ds(new.created_by) then
-        raise exception 'uid %s cannot create a new data source. Check user roles to enable data source creation.', new.created_by;
+    if TG_OP = 'INSERT' then
+        if not geoflow.user_can_create_ds(new.created_by) then
+            raise exception 'uid %s cannot create a new data source. Check user roles to enable data source creation.', new.created_by;
+        end if;
+        new.updated_by := new.created_by;
+        new.last_updated := now();
     end if;
     if TG_OP = 'UPDATE' then
         if not geoflow.user_can_update_ds(new.updated_by) then
@@ -690,7 +775,7 @@ create table geoflow.data_sources (
     created_by bigint not null references geoflow.users (uid) match simple
         on update cascade
         on delete set null,
-    last_updated timestamp,
+    last_updated timestamp not null,
     updated_by bigint not null references geoflow.users (uid) match simple
         on update cascade
         on delete set null,
@@ -730,6 +815,35 @@ insert into geoflow.data_sources(
 )
 values($2,$3,$4,$5,$1,$1,$6,$7,$8,$9)
 returning ds_id;
+$$;
+
+create procedure geoflow.update_data_source(
+    geoflow_user_id bigint,
+    ds_id bigint,
+    name text,
+    description text,
+    search_radius real,
+    comments text,
+    region_id bigint,
+    warehouse_type integer,
+    collection_workflow bigint,
+    load_workflow bigint,
+    check_workflow bigint
+)
+language sql
+as $$
+update geoflow.data_sources
+set    updated_by = $1,
+       name = $3,
+       description = $4,
+       search_radius = $5,
+       comments = nullif($6,''),
+       region_id = $7,
+       warehouse_type = $8,
+       collection_workflow = $9,
+       load_workflow = $10,
+       check_workflow = $11
+where  ds_id = $2;
 $$;
 
 create function geoflow.data_source_contacts_change()
@@ -777,6 +891,140 @@ create trigger data_source_contact_change
     on geoflow.data_source_contacts
     for each row
     execute procedure geoflow.data_source_contacts_change();
+
+create function geoflow.init_data_source_contact(
+    geoflow_user_id bigint,
+    ds_id bigint,
+    name text,
+    email text,
+    website text,
+    type text,
+    notes text
+) returns bigint
+volatile
+language sql
+as $$
+insert into geoflow.data_source_contacts(ds_id,name,email,website,type,notes,created_by)
+values($2,$3,$4,$5,$6,$7,$1)
+returning contact_id;
+$$;
+
+create procedure geoflow.update_data_source_contact(
+    geoflow_user_id bigint,
+    contact_id bigint,
+    name text,
+    email text,
+    website text,
+    type text,
+    notes text
+)
+language sql
+as $$
+update geoflow.data_source_contacts
+set    updated_by = $1,
+       name = $3,
+       email = nullif($4,''),
+       website = nullif($5,''),
+       type = nullif($6,''),
+       notes = nullif($7,'')
+where  contact_id = $2;
+$$;
+
+create type geoflow.data_source_contact as
+(
+    contact_id bigint,
+    name text,
+    email text,
+    website text,
+    contact_type text,
+    notes text,
+    created timestamp without time zone,
+    created_by text,
+    last_updated timestamp without time zone,
+    updated_by text
+);
+
+create function geoflow.get_contact(
+    contact_id bigint
+) returns geoflow.data_source_contact
+stable
+language sql
+as $$
+select row(
+        dsc.contact_id,
+        dsc.name,
+        dsc.email,
+        dsc.website,
+        dsc.type,
+        dsc.notes,
+        dsc.created,
+        u1.name,
+        dsc.last_updated,
+        u2.name
+       )::geoflow.data_source_contact
+from   geoflow.data_source_contacts dsc
+join   geoflow.users u1 on u1.uid = dsc.created_by
+join   geoflow.users u2 on u2.uid = dsc.updated_by
+where  dsc.contact_id = $1
+$$;
+
+create function geoflow.get_contacts(
+    ds_id bigint
+) returns setof geoflow.data_source_contact
+stable
+language sql
+as $$
+select row(
+        dsc.contact_id,
+        dsc.name,
+        dsc.email,
+        dsc.website,
+        dsc.type,
+        dsc.notes,
+        dsc.created,
+        u1.name,
+        dsc.last_updated,
+        u2.name
+       )::geoflow.data_source_contact
+from   geoflow.data_source_contacts dsc
+join   geoflow.users u1 on u1.uid = dsc.created_by
+join   geoflow.users u2 on u2.uid = dsc.updated_by
+where  dsc.ds_id = $1
+$$;
+
+create view geoflow.v_data_sources as
+    with contacts as (
+        select ds_id,
+               array_agg(row(
+                dsc.contact_id,
+                dsc.name,
+                dsc.email,
+                dsc.website,
+                dsc.type,
+                dsc.notes,
+                dsc.created,
+                u1.name,
+                dsc.last_updated,
+                u2.name
+               )::geoflow.data_source_contact) contacts
+        from   geoflow.data_source_contacts dsc
+        join   geoflow.users u1 on u1.uid = dsc.created_by
+        join   geoflow.users u2 on u2.uid = dsc.updated_by
+        group by dsc.ds_id
+    )
+    select ds.ds_id, ds.name, ds.description, ds.search_radius, ds.comments,
+           r.region_id, r.country_code, r.country_name, r.prov_code, r.prov_name, r.county,
+           u1.name as "assigned_user", ds.created, u2.name as "created_by", ds.last_updated, u3.name as "updated_by",
+           wt.wt_id, wt.name as "warehouse_name", wt.description as "warehouse_description",
+           ds.collection_workflow, ds.load_workflow, ds.check_workflow,
+           coalesce(c.contacts,'{}'::geoflow.data_source_contact[]) as "contacts"
+    from   geoflow.data_sources ds
+    join   geoflow.regions r on r.region_id = ds.region_id
+    join   geoflow.users u1 on u1.uid = ds.assigned_user
+    join   geoflow.users u2 on u2.uid = ds.created_by
+    join   geoflow.users u3 on u3.uid = ds.updated_by
+    join   geoflow.warehouse_types wt on wt.wt_id = ds.warehouse_type
+    left join contacts c on c.ds_id = ds.ds_id;
 
 create type geoflow.load_state as enum ('Active', 'Ready', 'Hold');
 create type geoflow.merge_type as enum ('None', 'Exclusive', 'Intersect');
@@ -979,9 +1227,9 @@ stable
 language sql
 as $$
 with load_instance as (
-	select li_id
-	from   geoflow.load_instances
-	where  load_workflow_run_id = $1
+    select li_id
+    from   geoflow.load_instances
+    where  load_workflow_run_id = $1
 )
 select sd_id, li_id, load_source_id, user_generated, options, table_name, columns,
        to_load, loaded_timestamp, error_message
