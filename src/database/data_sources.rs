@@ -29,7 +29,7 @@ pub struct WarehouseType {
     description: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, sqlx::FromRow)]
 pub struct DataSourceContact {
     contact_id: i64,
     name: String,
@@ -37,10 +37,14 @@ pub struct DataSourceContact {
     website: Option<String>,
     contact_type: Option<String>,
     notes: Option<String>,
+    #[serde(default)]
     created: NaiveDateTime,
+    #[serde(default)]
     created_by: String,
-    last_updated: NaiveDateTime,
-    updated_by: String,
+    #[serde(default)]
+    last_updated: Option<NaiveDateTime>,
+    #[serde(default)]
+    updated_by: Option<String>,
 }
 
 impl Encode<'_, Postgres> for DataSourceContact {
@@ -70,8 +74,8 @@ impl Encode<'_, Postgres> for DataSourceContact {
             + <Option<String> as Encode<Postgres>>::size_hint(&self.notes)
             + <NaiveDateTime as Encode<Postgres>>::size_hint(&self.created)
             + <String as Encode<Postgres>>::size_hint(&self.created_by)
-            + <NaiveDateTime as Encode<Postgres>>::size_hint(&self.last_updated)
-            + <String as Encode<Postgres>>::size_hint(&self.updated_by)
+            + <Option<NaiveDateTime> as Encode<Postgres>>::size_hint(&self.last_updated)
+            + <Option<String> as Encode<Postgres>>::size_hint(&self.updated_by)
     }
 }
 
@@ -88,8 +92,8 @@ impl<'r> Decode<'r, Postgres> for DataSourceContact {
         let notes = decoder.try_decode::<Option<String>>()?;
         let created = decoder.try_decode::<NaiveDateTime>()?;
         let created_by = decoder.try_decode::<String>()?;
-        let last_updated = decoder.try_decode::<NaiveDateTime>()?;
-        let updated_by = decoder.try_decode::<String>()?;
+        let last_updated = decoder.try_decode::<Option<NaiveDateTime>>()?;
+        let updated_by = decoder.try_decode::<Option<String>>()?;
         Ok(DataSourceContact {
             contact_id,
             name,
