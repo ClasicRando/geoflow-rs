@@ -10,6 +10,8 @@ use sqlx::{
     PgPool, Postgres, Type,
 };
 
+use super::utilities::start_transaction;
+
 #[derive(Serialize, Deserialize, sqlx::FromRow)]
 pub struct Region {
     region_id: i64,
@@ -165,6 +167,7 @@ impl DataSource {
         request: DataSourceRequest,
         pool: &PgPool,
     ) -> Result<Option<Self>, sqlx::Error> {
+        let mut transaction = start_transaction(&uid, pool).await?;
         let result =
             sqlx::query_scalar("select geoflow.init_data_source($1,$2,$3,$4,$5,$6,$7,$8,$9)")
                 .bind(uid)
@@ -176,8 +179,9 @@ impl DataSource {
                 .bind(request.collection_workflow)
                 .bind(request.load_workflow)
                 .bind(request.check_workflow)
-                .fetch_optional(pool)
+                .fetch_optional(&mut transaction)
                 .await?;
+        transaction.commit().await?;
         let Some(ds_id) = result else {
             return Ok(None)
         };
@@ -220,8 +224,9 @@ impl DataSource {
         pool: &PgPool,
     ) -> Result<Option<Self>, sqlx::Error> {
         if request.ds_id == 0 {
-            return Ok(None)
+            return Ok(None);
         }
+        let mut transaction = start_transaction(&uid, pool).await?;
         sqlx::query("call geoflow.update_data_source($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
             .bind(uid)
             .bind(request.ds_id)
@@ -234,8 +239,9 @@ impl DataSource {
             .bind(request.collection_workflow)
             .bind(request.load_workflow)
             .bind(request.check_workflow)
-            .execute(pool)
+            .execute(&mut transaction)
             .await?;
+        transaction.commit().await?;
         Self::read_one(request.ds_id, pool).await
     }
 }
