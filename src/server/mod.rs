@@ -1,4 +1,5 @@
 mod bulk_loading;
+mod data_sources;
 mod tasks;
 mod users;
 
@@ -7,6 +8,7 @@ use bulk_loading::{
     create_source_data, delete_source_data, read_many_source_data, read_single_source_data,
     update_source_data,
 };
+use data_sources::{create_data_source, read_data_source, read_data_sources, update_data_source};
 use rocket::{routes, Build, Config, Rocket};
 use tasks::run_bulk_load;
 use users::{
@@ -38,6 +40,10 @@ pub async fn build_server() -> Result<Rocket<Build>, sqlx::Error> {
             add_user_role,
             remove_user_role,
             run_bulk_load,
+            create_data_source,
+            read_data_source,
+            read_data_sources,
+            update_data_source,
         ],
     ))
 }
