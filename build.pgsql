@@ -745,8 +745,8 @@ as $$
 begin
     if TG_OP = 'INSERT' then
         if not geoflow.user_can_create_ds(new.created_by) then
-        raise exception 'uid %s cannot create a new data source. Check user roles to enable data source creation.', new.created_by;
-    end if;
+            raise exception 'uid %s cannot create a new data source. Check user roles to enable data source creation.', new.created_by;
+        end if;
         new.updated_by := new.created_by;
         new.last_updated := now();
     end if;
@@ -905,6 +905,40 @@ create type geoflow.data_source_contact as
     last_updated timestamp without time zone,
     updated_by text
 );
+
+create view geoflow.v_data_sources as
+    with contacts as (
+        select ds_id,
+               array_agg(row(
+                dsc.contact_id,
+                dsc.name,
+                dsc.email,
+                dsc.website,
+                dsc.type,
+                dsc.notes,
+                dsc.created,
+                u1.name,
+                dsc.last_updated,
+                u2.name
+               )::geoflow.data_source_contact) contacts
+        from   geoflow.data_source_contacts dsc
+        join   geoflow.users u1 on u1.uid = dsc.created_by
+        join   geoflow.users u2 on u2.uid = dsc.updated_by
+        group by dsc.ds_id
+    )
+    select ds.ds_id, ds.name, ds.description, ds.search_radius, ds.comments,
+           r.region_id, r.country_code, r.country_name, r.prov_code, r.prov_name, r.county,
+           u1.name as "assigned_user", ds.created, u2.name as "created_by", ds.last_updated, u3.name as "updated_by",
+           wt.wt_id, wt.name as "warehouse_name", wt.description as "warehouse_description",
+           ds.collection_workflow, ds.load_workflow, ds.check_workflow,
+           coalesce(c.contacts,'{}'::geoflow.data_source_contact[]) as "contacts"
+    from   geoflow.data_sources ds
+    join   geoflow.regions r on r.region_id = ds.region_id
+    join   geoflow.users u1 on u1.uid = ds.assigned_user
+    join   geoflow.users u2 on u2.uid = ds.created_by
+    join   geoflow.users u3 on u3.uid = ds.updated_by
+    join   geoflow.warehouse_types wt on wt.wt_id = ds.warehouse_type
+    left join contacts c on c.ds_id = ds.ds_id;
 
 create type geoflow.load_state as enum ('Active', 'Ready', 'Hold');
 create type geoflow.merge_type as enum ('None', 'Exclusive', 'Intersect');
@@ -1107,9 +1141,9 @@ stable
 language sql
 as $$
 with load_instance as (
-	select li_id
-	from   geoflow.load_instances
-	where  load_workflow_run_id = $1
+    select li_id
+    from   geoflow.load_instances
+    where  load_workflow_run_id = $1
 )
 select sd_id, li_id, load_source_id, user_generated, options, table_name, columns,
        to_load, loaded_timestamp, error_message
