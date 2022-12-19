@@ -561,16 +561,95 @@ as $$
     );
 $$;
 
+create function geoflow.region_change()
+returns trigger
+language plpgsql
+stable
+as $$
+declare
+    v_country text;
+    v_prov text;
+begin
+    begin
+        select distinct country_name
+        into   v_country
+        from   geoflow.regions
+        where  country_code = new.country_code;
+
+        if v_country != new.country_name then
+            raise exception 'Country name of the current record does not match the name found in the table. Expected "%", found "%"', v_country, new.country_name;
+        end if;
+    exception
+        when no_data_found then
+            null;
+    end;
+
+    if new.prov_code is null then
+        return new;
+    end if;
+
+    begin
+        select distinct prov_name
+        into   v_prov
+        from   geoflow.regions
+        where  country_code = new.country_code
+        and    prov_code = new.prov_code;
+
+        if v_prov != new.prov_name then
+            raise exception 'Prov name of the current record does not match the name found in the table. Expected "%", found "%"', v_prov, new.prov_name;
+        end if;
+    exception
+        when no_data_found then
+            null;
+    end;
+
+    select count(0)
+    into   v_check
+    from   geoflow.regions
+    where  country_code = new.country_code
+    and    coalesce(prov_code,'x') = coalesce(new.prov_code,'x')
+    and    coalesce(county,'x') = coalesce(new.county,'x');
+
+    if v_check > 0 then
+        raise exception 'Attempted to insert a record that already exists. "%", "%", "%"', new.country_code, new.prov_code, new.county;
+    end if;
+
+    return new;
+end;
+$$;
+
 create table geoflow.regions (
     region_id bigint primary key generated always as identity,
     country_code text not null check(geoflow.check_not_blank_or_empty(country_code)),
     country_name text not null check(geoflow.check_not_blank_or_empty(country_name)),
     prov_code text check(geoflow.check_not_blank_or_empty(prov_code)),
     prov_name text check(geoflow.check_not_blank_or_empty(prov_name)),
-    county text check(geoflow.check_not_blank_or_empty(county))
+    county text check(geoflow.check_not_blank_or_empty(county)),
+    constraint regions_prov_check check(
+        case
+            when prov_code is not null and prov_name is null then false
+            when prov_code is null and prov_name is not null then false
+            else true
+        end
+    ),
+    constraint regions_county_prov_check check(
+        case
+            when county is not null and prov_code is null then false
+            else true
+        end
+    ),
+    constraint regions_unique unique (country_code,prov_code,county)
 );
 
-insert into geoflow.regions(country_code,prov_code,name,country_name)
+call audit.audit_table('geoflow.regions');
+
+create trigger region_change
+    before update or insert
+    on geoflow.regions
+    for each row
+    execute procedure geoflow.region_change();
+
+insert into geoflow.regions(country_code,prov_code,prov_name,country_name)
 values('US','AL','Alabama','United States'),
 ('US','AK','Alaska','United States'),
 ('US','AZ','Arizona','United States'),
@@ -640,7 +719,9 @@ values('US','AL','Alabama','United States'),
 ('CA','ON','Ontario','Canada'),
 ('CA','PE','Prince Edward Island','Canada'),
 ('CA','QC','Quebec','Canada'),
-('CA','YT','Yukon','Canada');
+('CA','YT','Yukon','Canada'),
+('CA',null,null,'Canada'),
+('US',null,null,'United States');
 
 create table geoflow.warehouse_types (
     wt_id integer primary key generated always as identity,
