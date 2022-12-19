@@ -18,6 +18,7 @@ pub fn db_options() -> PgConnectOptions {
         .database(we_db_name)
         .username(we_db_user)
         .password(we_db_password)
+        .options([("search_path", "geoflow")])
 }
 
 pub async fn create_db_pool() -> Result<PgPool, Error> {
