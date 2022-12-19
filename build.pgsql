@@ -743,8 +743,12 @@ language plpgsql
 stable
 as $$
 begin
-    if TG_OP = 'INSERT' and not geoflow.user_can_create_ds(new.created_by) then
+    if TG_OP = 'INSERT' then
+        if not geoflow.user_can_create_ds(new.created_by) then
         raise exception 'uid %s cannot create a new data source. Check user roles to enable data source creation.', new.created_by;
+    end if;
+        new.updated_by := new.created_by;
+        new.last_updated := now();
     end if;
     if TG_OP = 'UPDATE' then
         if not geoflow.user_can_update_ds(new.updated_by) then
@@ -771,7 +775,7 @@ create table geoflow.data_sources (
     created_by bigint not null references geoflow.users (uid) match simple
         on update cascade
         on delete set null,
-    last_updated timestamp,
+    last_updated timestamp not null,
     updated_by bigint not null references geoflow.users (uid) match simple
         on update cascade
         on delete set null,
