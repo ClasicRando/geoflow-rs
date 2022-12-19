@@ -1,9 +1,9 @@
-use rocket::{get, patch, post, serde::msgpack::MsgPack, State};
+use rocket::{delete, get, patch, post, serde::msgpack::MsgPack, State};
 use sqlx::postgres::PgPool;
 use workflow_engine::server::MsgPackApiResponse;
 
 use crate::database::{
-    data_sources::{DataSource, DataSourceRequest},
+    data_sources::{DataSource, DataSourceContact, DataSourceRequest},
     users::User,
 };
 
@@ -59,6 +59,102 @@ pub async fn update_data_source(
         Ok(None) => {
             MsgPackApiResponse::failure(String::from("Data source creation was not successful"))
         }
+        Err(error) => MsgPackApiResponse::error(error),
+    }
+}
+
+#[post(
+    "/data-source/<ds_id>/contact",
+    format = "msgpack",
+    data = "<data_source_contact>"
+)]
+pub async fn create_data_source_contact(
+    ds_id: i64,
+    user: User,
+    data_source_contact: MsgPack<DataSourceContact>,
+    pool: &State<PgPool>,
+) -> MsgPackApiResponse<DataSourceContact> {
+    if !user.is_collection() {
+        return MsgPackApiResponse::failure(String::from(
+            "User cannot create data source contacts",
+        ));
+    }
+    match DataSourceContact::create(user.uid, ds_id, data_source_contact.0, pool).await {
+        Ok(Some(contact)) => MsgPackApiResponse::success(contact),
+        Ok(None) => MsgPackApiResponse::failure(String::from(
+            "Data source contact creation was not successful",
+        )),
+        Err(error) => MsgPackApiResponse::error(error),
+    }
+}
+
+#[get("/data-source-contact/<contact_id>")]
+pub async fn read_data_source_contact(
+    contact_id: i64,
+    pool: &State<PgPool>,
+) -> MsgPackApiResponse<DataSourceContact> {
+    match DataSourceContact::read_one(contact_id, pool).await {
+        Ok(Some(contact)) => MsgPackApiResponse::success(contact),
+        Ok(None) => MsgPackApiResponse::failure(format!(
+            "Could not find a data source contact for contact_id = {}",
+            contact_id
+        )),
+        Err(error) => MsgPackApiResponse::error(error),
+    }
+}
+
+#[get("/data-source/<ds_id>/contacts")]
+pub async fn read_data_source_contacts(
+    ds_id: i64,
+    pool: &State<PgPool>,
+) -> MsgPackApiResponse<Vec<DataSourceContact>> {
+    match DataSourceContact::read_many(ds_id, pool).await {
+        Ok(contacts) => MsgPackApiResponse::success(contacts),
+        Err(error) => MsgPackApiResponse::error(error),
+    }
+}
+
+#[patch(
+    "/data-source-contact",
+    format = "msgpack",
+    data = "<data_source_contact>"
+)]
+pub async fn update_data_source_contact(
+    user: User,
+    data_source_contact: MsgPack<DataSourceContact>,
+    pool: &State<PgPool>,
+) -> MsgPackApiResponse<DataSourceContact> {
+    if !user.is_collection() {
+        return MsgPackApiResponse::failure(String::from(
+            "User cannot update data source contacts",
+        ));
+    }
+    match DataSourceContact::update(user.uid, data_source_contact.0, pool).await {
+        Ok(Some(contact)) => MsgPackApiResponse::success(contact),
+        Ok(None) => {
+            MsgPackApiResponse::failure(String::from("Data source creation was not successful"))
+        }
+        Err(error) => MsgPackApiResponse::error(error),
+    }
+}
+
+#[delete("/data-source-contact/<contact_id>")]
+pub async fn delete_data_source_contact(
+    contact_id: i64,
+    user: User,
+    pool: &State<PgPool>,
+) -> MsgPackApiResponse<DataSourceContact> {
+    if !user.is_collection() {
+        return MsgPackApiResponse::failure(String::from(
+            "User cannot delete data source contacts",
+        ));
+    }
+    match DataSourceContact::delete(user.uid, contact_id, pool).await {
+        Ok(true) => MsgPackApiResponse::message(format!("Deleted contact_id = {}", contact_id)),
+        Ok(false) => MsgPackApiResponse::failure(format!(
+            "Could not delete contact for contact_id = {}",
+            contact_id
+        )),
         Err(error) => MsgPackApiResponse::error(error),
     }
 }
