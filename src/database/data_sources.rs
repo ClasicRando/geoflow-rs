@@ -58,7 +58,7 @@ impl DataSourceContact {
     ) -> Result<Option<Self>, sqlx::Error> {
         let mut transaction = start_transaction(&uid, pool).await?;
         let result =
-            sqlx::query_scalar("select geoflow.init_data_source_contact($1,$2,$3,$4,$5,$6,$7)")
+            sqlx::query_scalar("select init_data_source_contact($1,$2,$3,$4,$5,$6,$7)")
                 .bind(uid)
                 .bind(ds_id)
                 .bind(&contact.name)
@@ -76,7 +76,7 @@ impl DataSourceContact {
     }
 
     pub async fn read_one(contact_id: i64, pool: &PgPool) -> Result<Option<Self>, sqlx::Error> {
-        sqlx::query_scalar("select geoflow.get_contact($1)")
+        sqlx::query_scalar("select get_contact($1)")
             .bind(contact_id)
             .fetch_optional(pool)
             .await
@@ -87,7 +87,7 @@ impl DataSourceContact {
             r#"
             select contact_id, name, email, website, contact_type, notes,
                    created, created_by, last_updated, updated_by
-            from   geoflow.get_contacts($1)"#,
+            from   get_contacts($1)"#,
         )
         .bind(ds_id)
         .fetch_all(pool)
@@ -100,7 +100,7 @@ impl DataSourceContact {
         pool: &PgPool,
     ) -> Result<Option<Self>, sqlx::Error> {
         let mut transaction = start_transaction(&uid, pool).await?;
-        sqlx::query("call geoflow.update_data_source_contact($1,$2,$3,$4,$5,$6,$7)")
+        sqlx::query("call update_data_source_contact($1,$2,$3,$4,$5,$6,$7)")
             .bind(uid)
             .bind(contact.contact_id)
             .bind(&contact.name)
@@ -116,7 +116,7 @@ impl DataSourceContact {
 
     pub async fn delete(uid: i64, contact_id: i64, pool: &PgPool) -> Result<bool, sqlx::Error> {
         let mut transaction = start_transaction(&uid, pool).await?;
-        let result = sqlx::query("delete from geoflow.data_source_contacts where contact_id = $1")
+        let result = sqlx::query("delete from data_source_contacts where contact_id = $1")
             .bind(contact_id)
             .execute(&mut transaction)
             .await?;
@@ -245,7 +245,7 @@ impl DataSource {
     ) -> Result<Option<Self>, sqlx::Error> {
         let mut transaction = start_transaction(&uid, pool).await?;
         let result =
-            sqlx::query_scalar("select geoflow.init_data_source($1,$2,$3,$4,$5,$6,$7,$8,$9)")
+            sqlx::query_scalar("select init_data_source($1,$2,$3,$4,$5,$6,$7,$8,$9)")
                 .bind(uid)
                 .bind(&request.name)
                 .bind(&request.description)
@@ -272,7 +272,7 @@ impl DataSource {
                    assigned_user, created, created_by, last_updated, updated_by,
                    wt_id, warehouse_name, warehouse_description,
                    collection_workflow, load_workflow, check_workflow, contacts
-            from   geoflow.v_data_sources
+            from   v_data_sources
             where  ds_id = $1"#,
         )
         .bind(ds_id)
@@ -288,7 +288,7 @@ impl DataSource {
                    assigned_user, created, created_by, last_updated, updated_by,
                    wt_id, warehouse_name, warehouse_description,
                    collection_workflow, load_workflow, check_workflow, contacts
-            from   geoflow.v_data_sources"#,
+            from   v_data_sources"#,
         )
         .fetch_all(pool)
         .await
@@ -303,7 +303,7 @@ impl DataSource {
             return Ok(None);
         }
         let mut transaction = start_transaction(&uid, pool).await?;
-        sqlx::query("call geoflow.update_data_source($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
+        sqlx::query("call update_data_source($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)")
             .bind(uid)
             .bind(request.ds_id)
             .bind(&request.name)

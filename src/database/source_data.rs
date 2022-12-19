@@ -27,7 +27,7 @@ impl SourceData {
     pub async fn create(mut data: Self, uid: i64, pool: &PgPool) -> Result<Self, sqlx::Error> {
         let mut transaction = start_transaction(&uid, pool).await?;
         let (sd_id, load_source_id): (i64, i16) =
-            sqlx::query_as("select geoflow.create_source_data_entry($1,$2,$3,$4,$5,$6)")
+            sqlx::query_as("select create_source_data_entry($1,$2,$3,$4,$5,$6)")
                 .bind(uid)
                 .bind(data.li_id)
                 .bind(data.user_generated)
@@ -43,7 +43,7 @@ impl SourceData {
     }
 
     pub async fn read_single(sd_id: i64, pool: &PgPool) -> Result<Option<Self>, sqlx::Error> {
-        let record: Option<SourceData> = sqlx::query_as("select geoflow.get_source_data_entry($1)")
+        let record: Option<SourceData> = sqlx::query_as("select get_source_data_entry($1)")
             .bind(sd_id)
             .fetch_optional(pool)
             .await?;
@@ -51,7 +51,7 @@ impl SourceData {
     }
 
     pub async fn read_many(li_id: i64, pool: &PgPool) -> Result<Vec<Self>, sqlx::Error> {
-        let records: Vec<SourceData> = sqlx::query_as("select * from geoflow.get_source_data($1)")
+        let records: Vec<SourceData> = sqlx::query_as("select * from get_source_data($1)")
             .bind(li_id)
             .fetch_all(pool)
             .await?;
@@ -63,7 +63,7 @@ impl SourceData {
         pool: &PgPool,
     ) -> Result<Vec<Self>, sqlx::Error> {
         let records: Vec<SourceData> =
-            sqlx::query_as("select * from geoflow.get_source_data_to_load($1)")
+            sqlx::query_as("select * from get_source_data_to_load($1)")
                 .bind(workflow_run_id)
                 .fetch_all(pool)
                 .await?;
@@ -73,7 +73,7 @@ impl SourceData {
     pub async fn update(self, uid: i64, pool: &PgPool) -> Result<Self, sqlx::Error> {
         let mut transaction = start_transaction(&uid, pool).await?;
         let new_state: SourceData =
-            sqlx::query_as("select geoflow.update_source_data_entry($1,$2,$3,$4,$5,$6,$7)")
+            sqlx::query_as("select update_source_data_entry($1,$2,$3,$4,$5,$6,$7)")
                 .bind(uid)
                 .bind(self.sd_id)
                 .bind(self.load_source_id)
@@ -89,7 +89,7 @@ impl SourceData {
 
     pub async fn delete(sd_id: i64, uid: i64, pool: &PgPool) -> Result<Option<Self>, sqlx::Error> {
         let mut transaction = start_transaction(&uid, pool).await?;
-        let record = sqlx::query_as("selct geoflow.delete_source_data_entry($1,$2)")
+        let record = sqlx::query_as("selct delete_source_data_entry($1,$2)")
             .bind(uid)
             .bind(sd_id)
             .fetch_optional(&mut transaction)

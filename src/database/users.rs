@@ -106,7 +106,7 @@ impl User {
     ) -> Result<Option<Self>, sqlx::Error> {
         let mut transaction = start_transaction(&geoflow_user_id, pool).await?;
         let role_ids = self.roles.iter().map(|r| r.role_id).collect::<Vec<_>>();
-        let uid_option: Option<i64> = sqlx::query_scalar("select geoflow.create_user($1,$2,$3,$4)")
+        let uid_option: Option<i64> = sqlx::query_scalar("select create_user($1,$2,$3,$4)")
             .bind(&self.name)
             .bind(&self.username)
             .bind(&self.password)
@@ -121,7 +121,7 @@ impl User {
     }
 
     pub async fn validate_user(&self, pool: &PgPool) -> Result<Option<Self>, sqlx::Error> {
-        let result: Option<i64> = sqlx::query_scalar("select geoflow.validate_user($1,$2)")
+        let result: Option<i64> = sqlx::query_scalar("select validate_user($1,$2)")
             .bind(&self.username)
             .bind(&self.password)
             .fetch_optional(pool)
@@ -136,7 +136,7 @@ impl User {
         sqlx::query_as(
             r#"
             select uid, name, username, roles
-            from   geoflow.v_users
+            from   v_users
             where  uid = $1"#,
         )
         .bind(uid)
@@ -148,7 +148,7 @@ impl User {
         sqlx::query_as(
             r#"
             select uid, name, username, roles
-            from   geoflow.v_users"#,
+            from   v_users"#,
         )
         .fetch_all(pool)
         .await
@@ -162,7 +162,7 @@ impl User {
         pool: &PgPool,
     ) -> Result<Option<Self>, sqlx::Error> {
         let mut transaction = start_transaction(&geoflow_user_id, pool).await?;
-        let uid: i64 = sqlx::query_scalar("select geoflow.update_user_password($1,$2,$3)")
+        let uid: i64 = sqlx::query_scalar("select update_user_password($1,$2,$3)")
             .bind(&username)
             .bind(&old_password)
             .bind(&new_password)
@@ -180,7 +180,7 @@ impl User {
         let mut transaction = start_transaction(&uid, pool).await?;
         sqlx::query(
             r#"
-            update geoflow.users
+            update users
             set    name = $2
             where  uid = $1;"#,
         )
@@ -201,7 +201,7 @@ impl User {
         let mut transaction = start_transaction(&geoflow_user_id, pool).await?;
         sqlx::query(
             r#"
-            insert into geoflow.user_roles(uid,role_id)
+            insert into user_roles(uid,role_id)
             values($1,$2)"#,
         )
         .bind(uid)
@@ -221,7 +221,7 @@ impl User {
         let mut transaction = start_transaction(&geoflow_user_id, pool).await?;
         sqlx::query(
             r#"
-            delete from geoflow.user_roles
+            delete from user_roles
             where  uid = $1
             and    role_id = $2;"#,
         )
