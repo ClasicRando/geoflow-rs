@@ -892,6 +892,20 @@ create trigger data_source_contact_change
     for each row
     execute procedure geoflow.data_source_contacts_change();
 
+create type geoflow.data_source_contact as
+(
+    contact_id bigint,
+    name text,
+    email text,
+    website text,
+    contact_type text,
+    notes text,
+    created timestamp without time zone,
+    created_by text,
+    last_updated timestamp without time zone,
+    updated_by text
+);
+
 create type geoflow.load_state as enum ('Active', 'Ready', 'Hold');
 create type geoflow.merge_type as enum ('None', 'Exclusive', 'Intersect');
 
