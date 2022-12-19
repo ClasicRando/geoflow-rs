@@ -817,6 +817,35 @@ values($2,$3,$4,$5,$1,$1,$6,$7,$8,$9)
 returning ds_id;
 $$;
 
+create procedure geoflow.update_data_source(
+    geoflow_user_id bigint,
+    ds_id bigint,
+    name text,
+    description text,
+    search_radius real,
+    comments text,
+    region_id bigint,
+    warehouse_type integer,
+    collection_workflow bigint,
+    load_workflow bigint,
+    check_workflow bigint
+)
+language sql
+as $$
+update geoflow.data_sources
+set    updated_by = $1,
+       name = $3,
+       description = $4,
+       search_radius = $5,
+       comments = $6,
+       region_id = $7,
+       warehouse_type = $8,
+       collection_workflow = $9,
+       load_workflow = $10,
+       check_workflow = $11
+where  ds_id = $2;
+$$;
+
 create function geoflow.data_source_contacts_change()
 returns trigger
 language plpgsql
