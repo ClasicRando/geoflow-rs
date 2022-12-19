@@ -892,6 +892,44 @@ create trigger data_source_contact_change
     for each row
     execute procedure geoflow.data_source_contacts_change();
 
+create function geoflow.init_data_source_contact(
+    geoflow_user_id bigint,
+    ds_id bigint,
+    name text,
+    email text,
+    website text,
+    type text,
+    notes text
+) returns bigint
+volatile
+language sql
+as $$
+insert into geoflow.data_source_contacts(ds_id,name,email,website,type,notes,created_by)
+values($2,$3,$4,$5,$6,$7,$1)
+returning contact_id;
+$$;
+
+create procedure geoflow.update_data_source_contact(
+    geoflow_user_id bigint,
+    contact_id bigint,
+    name text,
+    email text,
+    website text,
+    type text,
+    notes text
+)
+language sql
+as $$
+update geoflow.data_source_contacts
+set    updated_by = $1,
+       name = $3,
+       email = nullif($4,''),
+       website = nullif($5,''),
+       type = nullif($6,''),
+       notes = nullif($7,'')
+where  contact_id = $2;
+$$;
+
 create type geoflow.data_source_contact as
 (
     contact_id bigint,
@@ -905,6 +943,54 @@ create type geoflow.data_source_contact as
     last_updated timestamp without time zone,
     updated_by text
 );
+
+create function geoflow.get_contact(
+    contact_id bigint
+) returns geoflow.data_source_contact
+stable
+language sql
+as $$
+select row(
+        dsc.contact_id,
+        dsc.name,
+        dsc.email,
+        dsc.website,
+        dsc.type,
+        dsc.notes,
+        dsc.created,
+        u1.name,
+        dsc.last_updated,
+        u2.name
+       )::geoflow.data_source_contact
+from   geoflow.data_source_contacts dsc
+join   geoflow.users u1 on u1.uid = dsc.created_by
+join   geoflow.users u2 on u2.uid = dsc.updated_by
+where  dsc.contact_id = $1
+$$;
+
+create function geoflow.get_contacts(
+    ds_id bigint
+) returns setof geoflow.data_source_contact
+stable
+language sql
+as $$
+select row(
+        dsc.contact_id,
+        dsc.name,
+        dsc.email,
+        dsc.website,
+        dsc.type,
+        dsc.notes,
+        dsc.created,
+        u1.name,
+        dsc.last_updated,
+        u2.name
+       )::geoflow.data_source_contact
+from   geoflow.data_source_contacts dsc
+join   geoflow.users u1 on u1.uid = dsc.created_by
+join   geoflow.users u2 on u2.uid = dsc.updated_by
+where  dsc.ds_id = $1
+$$;
 
 create view geoflow.v_data_sources as
     with contacts as (
