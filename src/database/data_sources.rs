@@ -49,6 +49,82 @@ pub struct DataSourceContact {
     updated_by: Option<String>,
 }
 
+impl DataSourceContact {
+    pub async fn create(
+        uid: i64,
+        ds_id: i64,
+        contact: DataSourceContact,
+        pool: &PgPool,
+    ) -> Result<Option<Self>, sqlx::Error> {
+        let mut transaction = start_transaction(&uid, pool).await?;
+        let result =
+            sqlx::query_scalar("select geoflow.init_data_source_contact($1,$2,$3,$4,$5,$6,$7)")
+                .bind(uid)
+                .bind(ds_id)
+                .bind(&contact.name)
+                .bind(&contact.email)
+                .bind(&contact.website)
+                .bind(&contact.contact_type)
+                .bind(&contact.notes)
+                .fetch_optional(&mut transaction)
+                .await?;
+        transaction.commit().await?;
+        let Some(contact_id) = result else {
+            return Ok(None)
+        };
+        Self::read_one(contact_id, pool).await
+    }
+
+    pub async fn read_one(contact_id: i64, pool: &PgPool) -> Result<Option<Self>, sqlx::Error> {
+        sqlx::query_scalar("select geoflow.get_contact($1)")
+            .bind(contact_id)
+            .fetch_optional(pool)
+            .await
+    }
+
+    pub async fn read_many(ds_id: i64, pool: &PgPool) -> Result<Vec<Self>, sqlx::Error> {
+        sqlx::query_as(
+            r#"
+            select contact_id, name, email, website, contact_type, notes,
+                   created, created_by, last_updated, updated_by
+            from   geoflow.get_contacts($1)"#,
+        )
+        .bind(ds_id)
+        .fetch_all(pool)
+        .await
+    }
+
+    pub async fn update(
+        uid: i64,
+        contact: DataSourceContact,
+        pool: &PgPool,
+    ) -> Result<Option<Self>, sqlx::Error> {
+        let mut transaction = start_transaction(&uid, pool).await?;
+        sqlx::query("call geoflow.update_data_source_contact($1,$2,$3,$4,$5,$6,$7)")
+            .bind(uid)
+            .bind(contact.contact_id)
+            .bind(&contact.name)
+            .bind(&contact.email)
+            .bind(&contact.website)
+            .bind(&contact.contact_type)
+            .bind(&contact.notes)
+            .execute(&mut transaction)
+            .await?;
+        transaction.commit().await?;
+        Self::read_one(contact.contact_id, pool).await
+    }
+
+    pub async fn delete(uid: i64, contact_id: i64, pool: &PgPool) -> Result<bool, sqlx::Error> {
+        let mut transaction = start_transaction(&uid, pool).await?;
+        let result = sqlx::query("delete from geoflow.data_source_contacts where contact_id = $1")
+            .bind(contact_id)
+            .execute(&mut transaction)
+            .await?;
+        transaction.commit().await?;
+        Ok(result.rows_affected() > 0)
+    }
+}
+
 impl Encode<'_, Postgres> for DataSourceContact {
     fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> IsNull {
         let mut encoder = PgRecordEncoder::new(buf);
